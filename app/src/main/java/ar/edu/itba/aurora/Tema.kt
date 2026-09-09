@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.sp
 
 // ---------- Colores ----------
 
-val AcentoClaro = Color(0xFF0F8F6B)
-val AcentoOscuro = Color(0xFF2DD4A7)
+val AcentoClaro = Color(0xFFF59382)
+val AcentoOscuro = Color(0xFF82ADF5)
 
 val Nivel1 = Color(0xFF3B82C4)
 val Nivel2 = Color(0xFFE0A02A)
@@ -27,23 +27,23 @@ val VerdeOk = Color(0xFF1D9E75)
 private val EsquemaClaro = lightColorScheme(
     primary = AcentoClaro,
     onPrimary = Color.White,
-    background = Color(0xFFF7F7F5),
+    background = Color(0xFFE8C199),
     onBackground = Color(0xFF15161A),
-    surface = Color(0xFFFFFFFF),
+    surface = Color(0xC9F59382),
     onSurface = Color(0xFF15161A),
-    onSurfaceVariant = Color(0xFF63666E),
-    outline = Color(0xFFD9DAD6),
+    onSurfaceVariant = Color(0xFF411E56),
+    outline = Color(0xFF553AA4),
     error = Nivel3
 )
 
 private val EsquemaOscuro = darkColorScheme(
     primary = AcentoOscuro,
     onPrimary = Color(0xFF04231A),
-    background = Color(0xFF0E1116),
+    background = Color(0xFF282D36),
     onBackground = Color(0xFFEDEEF0),
-    surface = Color(0xFF171B21),
+    surface = Color(0xFF1C2128),
     onSurface = Color(0xFFEDEEF0),
-    onSurfaceVariant = Color(0xFF9BA1AB),
+    onSurfaceVariant = Color(0xFF82ADF5),
     outline = Color(0xFF2C323B),
     error = Nivel3
 )

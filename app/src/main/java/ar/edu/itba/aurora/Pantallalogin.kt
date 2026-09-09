@@ -42,7 +42,7 @@ fun PantallaLogin(onIngresar: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("AURORA", style = Marca, color = MaterialTheme.colorScheme.onBackground)
+            Text("aurora", style = Marca, color = MaterialTheme.colorScheme.onBackground)
 
             Box(
                 modifier = Modifier
@@ -53,7 +53,7 @@ fun PantallaLogin(onIngresar: () -> Unit) {
             )
 
             Text(
-                text = "Deteccion de somnolencia al volante",
+                text = "Detección de somnolencia al volante",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -76,7 +76,7 @@ fun PantallaLogin(onIngresar: () -> Unit) {
             )
 
             Text(
-                text = "contrasena",
+                text = "contraseña",
                 style = EtiquetaMono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -106,7 +106,7 @@ fun PantallaLogin(onIngresar: () -> Unit) {
                 modifier = Modifier.padding(top = 24.dp)
             )
             Text(
-                text = "Vas a quedar conectado en este dispositivo. Si no podes entrar, habla con tu supervisor.",
+                text = "Si no podes entrar, habla con tu supervisor.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

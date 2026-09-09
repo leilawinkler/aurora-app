@@ -103,7 +103,7 @@ fun PantallaNuevoViaje(
             }
 
             Text(
-                "Los primeros 5 minutos el dispositivo calibra tu linea de base. No emite alertas durante ese periodo.",
+                "Durante los primeros 5 minutos del viaje, el dispositivo calibra tu línea de base.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 18.dp, bottom = 32.dp)

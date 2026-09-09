@@ -65,7 +65,7 @@ fun PantallaViajes(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("AURORA", style = MarcaChica, color = MaterialTheme.colorScheme.onBackground)
+                    Text("aurora", style = MarcaChica, color = MaterialTheme.colorScheme.onBackground)
                     Text(
                         "Ruben Gonzalez",
                         style = MaterialTheme.typography.bodySmall,
@@ -133,7 +133,7 @@ private fun TarjetaViajeEnCurso(viaje: Viaje) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text("en curso", style = EtiquetaMono, color = VerdeOk)
                 Text(
-                    "${viaje.origen} -> ${viaje.destino}",
+                    "${viaje.origen} ➜ ${viaje.destino}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 12.dp)
@@ -172,7 +172,7 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        "${viaje.origen} -> ${viaje.destino}",
+                        "${viaje.origen} ➜ ${viaje.destino}",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)

@@ -49,7 +49,7 @@ fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
                     )
                 }
                 Text(
-                    "${viaje.origen} -> ${viaje.destino}",
+                    "${viaje.origen} ➜ ${viaje.destino}",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(top = 8.dp)
@@ -66,7 +66,7 @@ fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
 
             // Dos métricas
             Row(modifier = Modifier.fillMaxWidth()) {
-                Metrica("duracion", viaje.duracion, Modifier.weight(1f))
+                Metrica("duración", viaje.duracion, Modifier.weight(1f))
                 Box(
                     modifier = Modifier
                         .width(0.5.dp)
@@ -116,7 +116,7 @@ fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
 
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
             Text(
-                "linea de tiempo",
+                "línea de tiempo",
                 style = EtiquetaMono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
