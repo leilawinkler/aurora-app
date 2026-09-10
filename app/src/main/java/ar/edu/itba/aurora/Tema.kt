@@ -16,15 +16,31 @@ import androidx.compose.ui.unit.sp
 
 // ---------- Colores ----------
 
-// Detalle del theme claro
+// Detalles
 val AcentoClaro = Color(0xFFF59382)
-// Botones del viaje anterior del theme claro
-val SurfaceAnteriorClaro = Color(0xFFE0AF8C)
-
-// Detalles del theme oscuro
 val AcentoOscuro = Color(0xFF82ADF5)
-// Botones del viaje anterior del theme oscuro
+
+// Botones de los viajes anteriores
+val SurfaceAnteriorClaro = Color(0xFFE0AF8C)
 val SurfaceAnteriorOscuro = Color(0xFF242A33)
+
+// "sin subir" (ícono + texto)
+val SinSubirClaro = Color(0xFF6A2AE0)
+val SinSubirOscuro = Color(0xFFF0B94A)
+
+// "en curso" (etiqueta + barra izquierda)
+val EnCursoClaro = Color(0xFF1D9E75)
+val EnCursoOscuro = Color(0xFF3FD9A0)
+
+// fondo de la tarjeta "en curso", independiente del panel de abajo
+val FondoEnCursoClaro = Color(0xFFF2D9C4)
+val FondoEnCursoOscuro = Color(0xFF232830)
+
+// selección del bottom nav ("Viajes" / "Config")
+val SeleccionNavClaro = Color(0xFFB9D9FF)
+val SeleccionNavOscuro = Color(0xFF2C3A55)
+val OnSeleccionNavClaro = Color(0xFF15161A)
+val OnSeleccionNavOscuro = Color(0xFFEDEEF0)
 
 val Nivel1 = Color(0xFF3B82C4)
 val Nivel2 = Color(0xFFE0A02A)
@@ -38,12 +54,16 @@ private val EsquemaClaro = lightColorScheme(
     onBackground = Color(0xFF15161A),
     surface = Color(0xC9F59382),
     surfaceVariant = SurfaceAnteriorClaro,
+    surfaceContainerHigh = FondoEnCursoClaro,
     onSurface = Color(0xFF15161A),
     onSurfaceVariant = Color(0xFF411E56),
     outline = Color(0xFF553AA4),
+    secondary = EnCursoClaro,
+    tertiary = SinSubirClaro,
+    secondaryContainer = SeleccionNavClaro,
+    onSecondaryContainer = OnSeleccionNavClaro,
     error = Nivel3
 )
-
 private val EsquemaOscuro = darkColorScheme(
     primary = AcentoOscuro,
     onPrimary = Color(0xFF04231A),
@@ -51,9 +71,14 @@ private val EsquemaOscuro = darkColorScheme(
     onBackground = Color(0xFFEDEEF0),
     surface = Color(0xFF1C2128),
     surfaceVariant = SurfaceAnteriorOscuro,
+    surfaceContainerHigh = FondoEnCursoOscuro,
     onSurface = Color(0xFFEDEEF0),
     onSurfaceVariant = Color(0xFF82ADF5),
     outline = Color(0xFF2C323B),
+    secondary = EnCursoOscuro,
+    tertiary = SinSubirOscuro,
+    secondaryContainer = SeleccionNavOscuro,
+    onSecondaryContainer = OnSeleccionNavOscuro,
     error = Nivel3
 )
 

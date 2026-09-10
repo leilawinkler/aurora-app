@@ -1,6 +1,7 @@
 package ar.edu.itba.aurora
 
 import androidx.compose.foundation.background
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,17 +122,17 @@ fun PantallaViajes(
 private fun TarjetaViajeEnCurso(viaje: Viaje) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .width(3.dp)
                     .fillMaxHeight()
-                    .background(VerdeOk)
+                    .background(MaterialTheme.colorScheme.secondary)
             )
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("en curso", style = EtiquetaMono, color = VerdeOk)
+                Text("en curso", style = EtiquetaMono, color = MaterialTheme.colorScheme.secondary)
                 Text(
                     "${viaje.origen} ➜ ${viaje.destino}",
                     style = MaterialTheme.typography.titleMedium,
@@ -197,13 +198,13 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
                         Icon(
                             Icons.Filled.CloudOff,
                             contentDescription = null,
-                            tint = Nivel2,
+                            tint = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.width(16.dp)
                         )
                         Text(
-                            "  Sin subir",
+                            "Sin subir",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Nivel2
+                            color = MaterialTheme.colorScheme.tertiary
                         )
                     }
                 }
@@ -218,18 +219,28 @@ fun BarraInferior(
     onViajes: () -> Unit,
     onConfiguracion: () -> Unit
 ) {
+    val coloresItem = NavigationBarItemDefaults.colors(
+        selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
         NavigationBarItem(
             selected = seleccion == 0,
             onClick = onViajes,
             icon = { Icon(Icons.Filled.Route, contentDescription = null) },
-            label = { Text("Viajes") }
+            label = { Text("Viajes") },
+            colors = coloresItem
         )
         NavigationBarItem(
             selected = seleccion == 1,
             onClick = onConfiguracion,
             icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-            label = { Text("Config") }
+            label = { Text("Config") },
+            colors = coloresItem
         )
     }
 }
