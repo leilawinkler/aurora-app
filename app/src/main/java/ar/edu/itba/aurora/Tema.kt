@@ -44,26 +44,27 @@ val OnSeleccionNavOscuro = Color(0xFFEDEEF0)
 
 val Nivel1 = Color(0xFF3B82C4)
 val Nivel2 = Color(0xFFE0A02A)
-val Nivel3 = Color(0xFFD9534F)
-val VerdeOk = Color(0xFF1D9E75)
+val Nivel3 = Color(0xFF9C27B0)
+val VerdeOk = Color(0xFFFF5722)
 
 private val EsquemaClaro = lightColorScheme(
     primary = AcentoClaro,
     onPrimary = Color.White,
-    background = Color(0xFFE8C199),
+    background = Color(0xFFFFF7E6),
     onBackground = Color(0xFF15161A),
-    surface = Color(0xC9F59382),
+    surface = Color(0xFFFFDFAC),
     surfaceVariant = SurfaceAnteriorClaro,
     surfaceContainerHigh = FondoEnCursoClaro,
     onSurface = Color(0xFF15161A),
-    onSurfaceVariant = Color(0xFF411E56),
-    outline = Color(0xFF553AA4),
+    onSurfaceVariant = Color(0xFF2C2B2B),
+    outline = Color(0xFFFFF7E6),
     secondary = EnCursoClaro,
     tertiary = SinSubirClaro,
     secondaryContainer = SeleccionNavClaro,
     onSecondaryContainer = OnSeleccionNavClaro,
     error = Nivel3
 )
+
 private val EsquemaOscuro = darkColorScheme(
     primary = AcentoOscuro,
     onPrimary = Color(0xFF04231A),
