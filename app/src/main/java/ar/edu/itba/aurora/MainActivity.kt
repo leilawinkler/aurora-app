@@ -31,14 +31,16 @@ fun AppAurora() {
     var pantalla by remember { mutableStateOf<Pantalla>(Pantalla.Login) }
     var viajeEnCurso by remember { mutableStateOf<Viaje?>(DatosDeEjemplo.viajeEnCurso) }
 
-    AuroraTheme(oscuro = temaOscuro) {
-        when (val actual = pantalla) {
+    when (val actual = pantalla) {
 
-            is Pantalla.Login -> PantallaLogin(
+        is Pantalla.Login -> AuroraTheme(oscuro = true) {
+            PantallaLogin(
                 onIngresar = { pantalla = Pantalla.Viajes }
             )
+        }
 
-            is Pantalla.Viajes -> PantallaViajes(
+        is Pantalla.Viajes -> AuroraTheme(oscuro = temaOscuro) {
+            PantallaViajes(
                 viajeEnCurso = viajeEnCurso,
                 viajes = DatosDeEjemplo.viajes,
                 temaOscuro = temaOscuro,
@@ -47,8 +49,10 @@ fun AppAurora() {
                 onAbrirViaje = { pantalla = Pantalla.Detalle(it) },
                 onIrAConfiguracion = { pantalla = Pantalla.Configuracion }
             )
+        }
 
-            is Pantalla.NuevoViaje -> PantallaNuevoViaje(
+        is Pantalla.NuevoViaje -> AuroraTheme(oscuro = temaOscuro) {
+            PantallaNuevoViaje(
                 onVolver = { pantalla = Pantalla.Viajes },
                 onIniciar = { origen, destino ->
                     viajeEnCurso = DatosDeEjemplo.viajeEnCurso.copy(
@@ -60,13 +64,17 @@ fun AppAurora() {
                     pantalla = Pantalla.Viajes
                 }
             )
+        }
 
-            is Pantalla.Detalle -> PantallaDetalle(
+        is Pantalla.Detalle -> AuroraTheme(oscuro = temaOscuro) {
+            PantallaDetalle(
                 viaje = actual.viaje,
                 onVolver = { pantalla = Pantalla.Viajes }
             )
+        }
 
-            is Pantalla.Configuracion -> PantallaConfiguracion(
+        is Pantalla.Configuracion -> AuroraTheme(oscuro = temaOscuro) {
+            PantallaConfiguracion(
                 temaOscuro = temaOscuro,
                 onCambiarTema = { temaOscuro = it },
                 onIrAViajes = { pantalla = Pantalla.Viajes },
