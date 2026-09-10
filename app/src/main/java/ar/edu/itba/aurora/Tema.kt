@@ -17,9 +17,9 @@ import androidx.compose.ui.unit.sp
 // ---------- Colores ----------
 
 // Detalle del theme claro
-val AcentoClaro = Color(0xFFF59382)
+val AcentoClaro = Color(0xFFFFBD92)
 // Botones del viaje anterior del theme claro
-val SurfaceAnteriorClaro = Color(0xFFE0AF8C)
+val SurfaceAnteriorClaro = Color(0xFFFCC7C7)
 
 // Detalles del theme oscuro
 val AcentoOscuro = Color(0xFF82ADF5)
@@ -28,19 +28,19 @@ val SurfaceAnteriorOscuro = Color(0xFF242A33)
 
 val Nivel1 = Color(0xFF3B82C4)
 val Nivel2 = Color(0xFFE0A02A)
-val Nivel3 = Color(0xFFD9534F)
-val VerdeOk = Color(0xFF1D9E75)
+val Nivel3 = Color(0xFF9C27B0)
+val VerdeOk = Color(0xFFFF5722)
 
 private val EsquemaClaro = lightColorScheme(
     primary = AcentoClaro,
     onPrimary = Color.White,
-    background = Color(0xFFE8C199),
+    background = Color(0xFFFFF7E6),
     onBackground = Color(0xFF15161A),
-    surface = Color(0xC9F59382),
+    surface = Color(0xFFFFDFAC),
     surfaceVariant = SurfaceAnteriorClaro,
     onSurface = Color(0xFF15161A),
-    onSurfaceVariant = Color(0xFF411E56),
-    outline = Color(0xFF553AA4),
+    onSurfaceVariant = Color(0xFF2C2B2B),
+    outline = Color(0xFFFFF7E6),
     error = Nivel3
 )
 
