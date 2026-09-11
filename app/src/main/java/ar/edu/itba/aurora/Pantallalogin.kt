@@ -27,7 +27,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun PantallaLogin(onIngresar: () -> Unit) {
+fun PantallaLogin(
+    cargando: Boolean = false,
+    error: String? = null,
+    onIngresar: (String, String) -> Unit
+) {
     var usuario by remember { mutableStateOf("") }
     var clave by remember { mutableStateOf("") }
 
@@ -72,6 +76,7 @@ fun PantallaLogin(onIngresar: () -> Unit) {
                 value = usuario,
                 onValueChange = { usuario = it },
                 singleLine = true,
+                enabled = !cargando,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -88,16 +93,30 @@ fun PantallaLogin(onIngresar: () -> Unit) {
                 onValueChange = { clave = it },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                enabled = !cargando,
                 modifier = Modifier.fillMaxWidth()
             )
 
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                )
+            }
+
             Button(
-                onClick = onIngresar,
+                onClick = { onIngresar(usuario, clave) },
+                enabled = !cargando && usuario.isNotBlank() && clave.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 28.dp)
             ) {
-                Text("Ingresar")
+                Text(if (cargando) "Ingresando..." else "Ingresar")
             }
 
             HorizontalDivider(

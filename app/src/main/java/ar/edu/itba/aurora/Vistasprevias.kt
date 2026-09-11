@@ -15,7 +15,7 @@ import androidx.compose.ui.tooling.preview.Preview
 @Composable
 fun VistaPreviaLogin() {
     AuroraTheme(oscuro = true) {
-        PantallaLogin(onIngresar = {})
+        PantallaLogin(onIngresar = { _, _ -> })
     }
 }
 
