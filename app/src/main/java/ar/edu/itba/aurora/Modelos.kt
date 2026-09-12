@@ -7,13 +7,15 @@ data class Evento(
 )
 
 data class Viaje(
-    val id: Int,
+    val id: String,
     val origen: String,
     val destino: String,
     val fecha: String,
     val duracion: String,
     val horario: String,
     val eventos: List<Evento>,
+    // Momento de arranque del viaje, para el cronometro en vivo.
+    val inicioMs: Long? = null,
     val enCurso: Boolean = false,
     val sincronizado: Boolean = true,
     val eventosPorHora: List<Int> = emptyList(),
@@ -24,10 +26,11 @@ data class Viaje(
         get() = eventos.maxOfOrNull { it.nivel } ?: 0
 }
 
+// Solo se usa en las vistas previas de Android Studio.
 object DatosDeEjemplo {
 
     val viajeEnCurso = Viaje(
-        id = 0,
+        id = "ejemplo-0",
         origen = "Rosario",
         destino = "Tucuman",
         fecha = "08 sep",
@@ -43,7 +46,7 @@ object DatosDeEjemplo {
 
     val viajes = listOf(
         Viaje(
-            id = 1,
+            id = "ejemplo-1",
             origen = "Cordoba",
             destino = "Rosario",
             fecha = "05 sep",
@@ -60,7 +63,7 @@ object DatosDeEjemplo {
             )
         ),
         Viaje(
-            id = 2,
+            id = "ejemplo-2",
             origen = "Mendoza",
             destino = "Cordoba",
             fecha = "02 sep",

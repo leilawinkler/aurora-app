@@ -20,8 +20,10 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,9 +34,15 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 @Composable
 fun PantallaViajes(
@@ -44,7 +52,12 @@ fun PantallaViajes(
     onCambiarTema: (Boolean) -> Unit,
     onNuevoViaje: () -> Unit,
     onAbrirViaje: (Viaje) -> Unit,
-    onIrAConfiguracion: () -> Unit
+    onIrAConfiguracion: () -> Unit,
+    nombreChofer: String = "",
+    cargando: Boolean = false,
+    error: String? = null,
+    finalizando: Boolean = false,
+    onFinalizarViaje: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -68,7 +81,7 @@ fun PantallaViajes(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("aurora", style = MarcaChica, color = MaterialTheme.colorScheme.onBackground)
                     Text(
-                        "Ruben Gonzalez",
+                        nombreChofer,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp)
@@ -83,7 +96,10 @@ fun PantallaViajes(
                     )
                 }
 
-                FilledIconButton(onClick = onNuevoViaje) {
+                FilledIconButton(
+                    onClick = onNuevoViaje,
+                    enabled = viajeEnCurso == null
+                ) {
                     Icon(Icons.Filled.Add, contentDescription = "Nuevo viaje")
                 }
             }
@@ -98,7 +114,14 @@ fun PantallaViajes(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (viajeEnCurso != null) {
-                    item { TarjetaViajeEnCurso(viajeEnCurso) }
+                    item {
+                        TarjetaViajeEnCurso(
+                            viaje = viajeEnCurso,
+                            finalizando = finalizando,
+                            onFinalizar = onFinalizarViaje,
+                            onAbrir = { onAbrirViaje(viajeEnCurso) }
+                        )
+                    }
                 }
 
                 item {
@@ -110,6 +133,41 @@ fun PantallaViajes(
                     )
                 }
 
+                if (cargando && viajes.isEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 24.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+
+                if (error != null) {
+                    item {
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                    }
+                }
+
+                if (!cargando && error == null && viajes.isEmpty()) {
+                    item {
+                        Text(
+                            "Todavia no hay viajes registrados. Toca + para iniciar uno.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                    }
+                }
+
                 items(viajes) { viaje ->
                     TarjetaViaje(viaje = viaje, onClick = { onAbrirViaje(viaje) })
                 }
@@ -119,8 +177,14 @@ fun PantallaViajes(
 }
 
 @Composable
-private fun TarjetaViajeEnCurso(viaje: Viaje) {
+private fun TarjetaViajeEnCurso(
+    viaje: Viaje,
+    finalizando: Boolean,
+    onFinalizar: () -> Unit,
+    onAbrir: () -> Unit
+) {
     Card(
+        onClick = onAbrir,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
     ) {
@@ -132,6 +196,9 @@ private fun TarjetaViajeEnCurso(viaje: Viaje) {
                     .background(MaterialTheme.colorScheme.secondary)
             )
             Column(modifier = Modifier.padding(18.dp)) {
+                // Se actualiza solo, una vez por segundo.
+                val ahora = ahoraQueLate()
+
                 Text("en curso", style = EtiquetaMono, color = MaterialTheme.colorScheme.secondary)
                 Text(
                     "${viaje.origen} ➜ ${viaje.destino}",
@@ -139,18 +206,60 @@ private fun TarjetaViajeEnCurso(viaje: Viaje) {
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+
                 Text(
-                    viaje.duracion,
+                    cronometro(viaje.inicioMs, ahora),
                     style = NumeroGrande,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 10.dp)
+                    modifier = Modifier.padding(top = 14.dp)
                 )
                 Text(
-                    "${viaje.eventos.size} eventos - AURORA-01 conectado",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
+                    "al volante",
+                    style = EtiquetaMono,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            "hora",
+                            style = EtiquetaMono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            horaDelDia(ahora),
+                            style = NumeroMediano,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "eventos",
+                            style = EtiquetaMono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            viaje.eventos.size.toString(),
+                            style = NumeroMediano,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onFinalizar,
+                    enabled = !finalizando,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                ) {
+                    Text(if (finalizando) "Finalizando..." else "Finalizar viaje")
+                }
             }
         }
     }
@@ -185,7 +294,7 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
                     )
                 }
                 Text(
-                    "${viaje.duracion} h - ${viaje.eventos.size} eventos - max N${viaje.nivelMaximo}",
+                    "${viaje.duracion} - ${viaje.eventos.size} eventos - max N${viaje.nivelMaximo}",
                     style = DatoMono,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
@@ -243,4 +352,20 @@ fun BarraInferior(
             colors = coloresItem
         )
     }
+}
+
+/**
+ * Devuelve la hora actual (en milisegundos) y se refresca cada segundo,
+ * asi el cronometro del viaje en curso avanza a la vista.
+ */
+@Composable
+private fun ahoraQueLate(): Long {
+    var ahora by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            ahora = System.currentTimeMillis()
+        }
+    }
+    return ahora
 }

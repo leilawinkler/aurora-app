@@ -26,6 +26,7 @@ sealed class Pantalla {
     data object NuevoViaje : Pantalla()
     data object Configuracion : Pantalla()
     data class Detalle(val viaje: Viaje) : Pantalla()
+    data object CambiarPassword : Pantalla()
 }
 
 class MainActivity : ComponentActivity() {
@@ -40,23 +41,51 @@ fun AppAurora() {
     // "alcance" es donde corren las tareas que tardan (hablar con Supabase).
     val alcance = rememberCoroutineScope()
 
-    // Estado global de la app
+    // --- Estado general ---
     var temaOscuro by remember { mutableStateOf(true) }
     var pantalla by remember { mutableStateOf<Pantalla>(Pantalla.Cargando) }
     var perfil by remember { mutableStateOf<Perfil?>(null) }
-    var viajeEnCurso by remember { mutableStateOf<Viaje?>(DatosDeEjemplo.viajeEnCurso) }
+    var empresa by remember { mutableStateOf("") }
 
-    // Estado de la pantalla de login
+    // --- Viajes traidos de la base ---
+    var viajes by remember { mutableStateOf<List<Viaje>>(emptyList()) }
+    var cargandoViajes by remember { mutableStateOf(false) }
+    var errorViajes by remember { mutableStateOf<String?>(null) }
+    // Cada vez que este numero cambia, se vuelven a pedir los viajes.
+    var recarga by remember { mutableStateOf(0) }
+
+    // --- Estado de cada accion ---
     var cargandoLogin by remember { mutableStateOf(false) }
     var errorLogin by remember { mutableStateOf<String?>(null) }
+    var guardandoViaje by remember { mutableStateOf(false) }
+    var errorNuevoViaje by remember { mutableStateOf<String?>(null) }
+    var finalizando by remember { mutableStateOf(false) }
+    var cambiandoPassword by remember { mutableStateOf(false) }
+    var errorPassword by remember { mutableStateOf<String?>(null) }
+    var passwordCambiada by remember { mutableStateOf(false) }
 
-    // Se ejecuta una sola vez al abrir la app: si ya habia sesion guardada,
-    // entra derecho a la pantalla de viajes.
+    // El viaje abierto y los ya cerrados salen de la misma lista.
+    val viajeEnCurso = viajes.firstOrNull { it.enCurso }
+    val viajesAnteriores = viajes.filter { !it.enCurso }
+
+    // Al abrir la app: si ya habia sesion guardada, entra derecho.
     LaunchedEffect(Unit) {
         Sesion.esperarInicio()
         val p = runCatching { Sesion.perfil() }.getOrNull()
         perfil = p
         pantalla = if (p != null) Pantalla.Viajes else Pantalla.Login
+    }
+
+    // Trae los viajes cada vez que cambia el chofer logueado o se pide recarga.
+    LaunchedEffect(perfil?.id, recarga) {
+        val p = perfil ?: return@LaunchedEffect
+        cargandoViajes = true
+        errorViajes = null
+        runCatching { Datos.viajesDelChofer() }
+            .onSuccess { viajes = it }
+            .onFailure { errorViajes = mensajeDeError(it) }
+        cargandoViajes = false
+        empresa = Datos.nombreEmpresa(p) ?: ""
     }
 
     when (val actual = pantalla) {
@@ -92,29 +121,75 @@ fun AppAurora() {
             )
         }
 
+        is Pantalla.CambiarPassword -> AuroraTheme(oscuro = temaOscuro) {
+            PantallaCambiarPassword(
+                cargando = cambiandoPassword,
+                error = errorPassword,
+                listo = passwordCambiada,
+                onVolver = {
+                    passwordCambiada = false
+                    pantalla = Pantalla.Configuracion
+                },
+                onGuardar = { nueva ->
+                    cambiandoPassword = true
+                    errorPassword = null
+                    alcance.launch {
+                        Sesion.cambiarPassword(nueva)
+                            .onSuccess { passwordCambiada = true }
+                            .onFailure { errorPassword = mensajeDeError(it) }
+                        cambiandoPassword = false
+                    }
+                }
+            )
+        }
+
         is Pantalla.Viajes -> AuroraTheme(oscuro = temaOscuro) {
             PantallaViajes(
                 viajeEnCurso = viajeEnCurso,
-                viajes = DatosDeEjemplo.viajes,
+                viajes = viajesAnteriores,
                 temaOscuro = temaOscuro,
                 onCambiarTema = { temaOscuro = it },
-                onNuevoViaje = { pantalla = Pantalla.NuevoViaje },
+                onNuevoViaje = {
+                    errorNuevoViaje = null
+                    pantalla = Pantalla.NuevoViaje
+                },
                 onAbrirViaje = { pantalla = Pantalla.Detalle(it) },
-                onIrAConfiguracion = { pantalla = Pantalla.Configuracion }
+                onIrAConfiguracion = { pantalla = Pantalla.Configuracion },
+                nombreChofer = perfil?.nombreCompleto ?: "",
+                cargando = cargandoViajes,
+                error = errorViajes,
+                finalizando = finalizando,
+                onFinalizarViaje = {
+                    val abierto = viajeEnCurso ?: return@PantallaViajes
+                    finalizando = true
+                    alcance.launch {
+                        Datos.finalizarViaje(abierto.id)
+                            .onFailure { errorViajes = mensajeDeError(it) }
+                        finalizando = false
+                        recarga++
+                    }
+                }
             )
         }
 
         is Pantalla.NuevoViaje -> AuroraTheme(oscuro = temaOscuro) {
             PantallaNuevoViaje(
                 onVolver = { pantalla = Pantalla.Viajes },
+                guardando = guardandoViaje,
+                error = errorNuevoViaje,
                 onIniciar = { origen, destino ->
-                    viajeEnCurso = DatosDeEjemplo.viajeEnCurso.copy(
-                        origen = origen.ifBlank { "Origen" },
-                        destino = destino.ifBlank { "Destino" },
-                        duracion = "00:00",
-                        eventos = emptyList()
-                    )
-                    pantalla = Pantalla.Viajes
+                    val p = perfil ?: return@PantallaNuevoViaje
+                    guardandoViaje = true
+                    errorNuevoViaje = null
+                    alcance.launch {
+                        Datos.iniciarViaje(p, origen, destino)
+                            .onSuccess {
+                                recarga++
+                                pantalla = Pantalla.Viajes
+                            }
+                            .onFailure { errorNuevoViaje = mensajeDeError(it) }
+                        guardandoViaje = false
+                    }
                 }
             )
         }
@@ -131,9 +206,19 @@ fun AppAurora() {
                 temaOscuro = temaOscuro,
                 onCambiarTema = { temaOscuro = it },
                 onIrAViajes = { pantalla = Pantalla.Viajes },
+                nombreChofer = perfil?.nombreCompleto ?: "",
+                usuario = perfil?.usuario ?: "",
+                empresa = empresa,
+                onCambiarPassword = {
+                    errorPassword = null
+                    passwordCambiada = false
+                    pantalla = Pantalla.CambiarPassword
+                },
                 onCerrarSesion = {
                     alcance.launch { Sesion.salir() }
                     perfil = null
+                    viajes = emptyList()
+                    empresa = ""
                     pantalla = Pantalla.Login
                 }
             )

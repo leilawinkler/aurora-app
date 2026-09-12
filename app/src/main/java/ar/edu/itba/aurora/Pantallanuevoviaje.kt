@@ -31,7 +31,9 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PantallaNuevoViaje(
     onVolver: () -> Unit,
-    onIniciar: (String, String) -> Unit
+    onIniciar: (String, String) -> Unit,
+    guardando: Boolean = false,
+    error: String? = null
 ) {
     var origen by remember { mutableStateOf("") }
     var destino by remember { mutableStateOf("") }
@@ -95,11 +97,21 @@ fun PantallaNuevoViaje(
                 }
             }
 
+            if (error != null) {
+                Text(
+                    error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+
             Button(
                 onClick = { onIniciar(origen, destino) },
+                enabled = !guardando && origen.isNotBlank() && destino.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Iniciar viaje")
+                Text(if (guardando) "Iniciando..." else "Iniciar viaje")
             }
 
             Text(

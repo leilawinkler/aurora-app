@@ -31,7 +31,11 @@ fun PantallaConfiguracion(
     temaOscuro: Boolean,
     onCambiarTema: (Boolean) -> Unit,
     onIrAViajes: () -> Unit,
-    onCerrarSesion: () -> Unit
+    onCerrarSesion: () -> Unit,
+    nombreChofer: String = "",
+    usuario: String = "",
+    empresa: String = "",
+    onCambiarPassword: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -115,31 +119,22 @@ fun PantallaConfiguracion(
                 }
             }
 
-            // Sincronización
-            Seccion("sincronizacion") {
-                FilaDato("Sin subir", "24 eventos", resaltado = true)
+            // Cuenta
+            Seccion("cuenta") {
+                if (nombreChofer.isNotBlank()) FilaDato("Nombre", nombreChofer)
+                if (usuario.isNotBlank()) FilaDato("Usuario", usuario)
+                if (empresa.isNotBlank()) FilaDato("Empresa", empresa)
                 OutlinedButton(
-                    onClick = {},
+                    onClick = onCambiarPassword,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 14.dp)
                 ) {
-                    Text("Sincronizar ahora")
+                    Text("Cambiar contraseña")
                 }
             }
 
-            // Cuenta
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    "Ruben Gonzalez",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "Transportes del Norte",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 Text(
                     "Cerrar sesion",
                     style = MaterialTheme.typography.bodyMedium,

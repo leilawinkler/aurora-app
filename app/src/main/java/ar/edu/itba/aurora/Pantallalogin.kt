@@ -9,7 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -23,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -34,6 +40,7 @@ fun PantallaLogin(
 ) {
     var usuario by remember { mutableStateOf("") }
     var clave by remember { mutableStateOf("") }
+    var verClave by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -92,7 +99,19 @@ fun PantallaLogin(
                 value = clave,
                 onValueChange = { clave = it },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation =
+                    if (verClave) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { verClave = !verClave }) {
+                        Icon(
+                            imageVector =
+                                if (verClave) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription =
+                                if (verClave) "Ocultar contraseña" else "Ver contraseña",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 enabled = !cargando,
                 modifier = Modifier.fillMaxWidth()
             )

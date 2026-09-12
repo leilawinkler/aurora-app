@@ -30,7 +30,8 @@ fun VistaPreviaViajes() {
             onCambiarTema = {},
             onNuevoViaje = {},
             onAbrirViaje = {},
-            onIrAConfiguracion = {}
+            onIrAConfiguracion = {},
+            nombreChofer = "Ruben Gonzalez"
         )
     }
 }
@@ -46,7 +47,8 @@ fun VistaPreviaViajesClaro() {
             onCambiarTema = {},
             onNuevoViaje = {},
             onAbrirViaje = {},
-            onIrAConfiguracion = {}
+            onIrAConfiguracion = {},
+            nombreChofer = "Ruben Gonzalez"
         )
     }
 }
@@ -75,7 +77,18 @@ fun VistaPreviaConfiguracion() {
             temaOscuro = true,
             onCambiarTema = {},
             onIrAViajes = {},
-            onCerrarSesion = {}
+            onCerrarSesion = {},
+            nombreChofer = "Ruben Gonzalez",
+            usuario = "rgonzalez",
+            empresa = "Transportes del Norte"
         )
+    }
+}
+
+@Preview(name = "Cambiar contraseña", showBackground = true, heightDp = 800)
+@Composable
+fun VistaPreviaCambiarPassword() {
+    AuroraTheme(oscuro = true) {
+        PantallaCambiarPassword(onGuardar = {})
     }
 }
