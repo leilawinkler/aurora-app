@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "ar.edu.itba.aurora"
-        minSdk = 26
+        minSdk = 25
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -30,6 +30,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Permite usar las clases de fecha/hora modernas en Android 7.
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -37,6 +39,9 @@ android {
 }
 
 dependencies {
+    // Clases de fecha/hora modernas para Android 7 (ver isCoreLibraryDesugaringEnabled)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     // Supabase (base de datos + login) y su motor de red
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
