@@ -72,7 +72,7 @@ fun PantallaLogin(
             )
 
             Text(
-                text = "usuario",
+                text = "Usuario",
                 style = EtiquetaMono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -88,7 +88,7 @@ fun PantallaLogin(
             )
 
             Text(
-                text = "contraseña",
+                text = "Contraseña",
                 style = EtiquetaMono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier

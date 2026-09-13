@@ -311,7 +311,7 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
                             modifier = Modifier.width(16.dp)
                         )
                         Text(
-                            "Sin subir",
+                            " Sin subir",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )

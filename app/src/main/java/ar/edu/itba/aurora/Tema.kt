@@ -17,42 +17,42 @@ import androidx.compose.ui.unit.sp
 // ---------- Colores ----------
 
 // Detalles
-val AcentoClaro = Color(0xFFF59382)
-val AcentoOscuro = Color(0xFF82ADF5)
+val AcentoClaro = Color(0xFFFFBA8E)
+val AcentoOscuro = Color(0xFF6E9CFC)
 
 // Botones de los viajes anteriores
-val SurfaceAnteriorClaro = Color(0xFFE0AF8C)
+val SurfaceAnteriorClaro = Color(0xFFFFBA8E)
 val SurfaceAnteriorOscuro = Color(0xFF242A33)
 
 // "sin subir" (ícono + texto)
-val SinSubirClaro = Color(0xFF6A2AE0)
-val SinSubirOscuro = Color(0xFFF0B94A)
+val SinSubirClaro = Color(0xFFF44336)
+val SinSubirOscuro = Color(0xFFD5FF62)
 
 // "en curso" (etiqueta + barra izquierda)
-val EnCursoClaro = Color(0xFF1D9E75)
-val EnCursoOscuro = Color(0xFF3FD9A0)
+val EnCursoClaro = Color(0xFFF44336)
+val EnCursoOscuro = Color(0xFFD5FF62)
 
 // fondo de la tarjeta "en curso", independiente del panel de abajo
-val FondoEnCursoClaro = Color(0xFFF2D9C4)
+val FondoEnCursoClaro = Color(0xFFFFD7BA)
 val FondoEnCursoOscuro = Color(0xFF232830)
 
 // selección del bottom nav ("Viajes" / "Config")
-val SeleccionNavClaro = Color(0xFFB9D9FF)
-val SeleccionNavOscuro = Color(0xFF2C3A55)
+val SeleccionNavClaro = Color(0xFFFFD566)
+val SeleccionNavOscuro = Color(0xFF393B5D)
 val OnSeleccionNavClaro = Color(0xFF15161A)
-val OnSeleccionNavOscuro = Color(0xFFEDEEF0)
+val OnSeleccionNavOscuro = Color(0xFFFFFFFF)
 
-val Nivel1 = Color(0xFF3B82C4)
-val Nivel2 = Color(0xFFE0A02A)
-val Nivel3 = Color(0xFF9C27B0)
-val VerdeOk = Color(0xFFFF5722)
+val Nivel1 = Color(0xFF6BBD46)
+val Nivel2 = Color(0xFFFFDE39)
+val Nivel3 = Color(0xFFFC49BF)
+val VerdeOk = Color(0xFF8B4CC2)
 
 private val EsquemaClaro = lightColorScheme(
     primary = AcentoClaro,
     onPrimary = Color.White,
     background = Color(0xFFFFF7E6),
     onBackground = Color(0xFF15161A),
-    surface = Color(0xFFFFDFAC),
+    surface = Color(0xFFFFE8AF),
     surfaceVariant = SurfaceAnteriorClaro,
     surfaceContainerHigh = FondoEnCursoClaro,
     onSurface = Color(0xFF15161A),
@@ -68,13 +68,13 @@ private val EsquemaClaro = lightColorScheme(
 private val EsquemaOscuro = darkColorScheme(
     primary = AcentoOscuro,
     onPrimary = Color(0xFF04231A),
-    background = Color(0xFF282D36),
+    background = Color(0xFF1F2125),
     onBackground = Color(0xFFEDEEF0),
-    surface = Color(0xFF1C2128),
+    surface = Color(0xFF242A33),
     surfaceVariant = SurfaceAnteriorOscuro,
     surfaceContainerHigh = FondoEnCursoOscuro,
     onSurface = Color(0xFFEDEEF0),
-    onSurfaceVariant = Color(0xFF82ADF5),
+    onSurfaceVariant = Color(0xFF6E9CFC),
     outline = Color(0xFF2C323B),
     secondary = EnCursoOscuro,
     tertiary = SinSubirOscuro,
