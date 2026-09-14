@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -39,6 +40,11 @@ android {
 }
 
 dependencies {
+    // Room: la base de datos local del telefono
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
     // Clases de fecha/hora modernas para Android 7 (ver isCoreLibraryDesugaringEnabled)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 

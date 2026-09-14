@@ -9,6 +9,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 
 sealed class Pantalla {
@@ -32,6 +34,8 @@ sealed class Pantalla {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Prende la base de datos local del telefono (Room).
+        Local.iniciar(this)
         setContent { AppAurora() }
     }
 }
@@ -63,6 +67,10 @@ fun AppAurora() {
     var cambiandoPassword by remember { mutableStateOf(false) }
     var errorPassword by remember { mutableStateOf<String?>(null) }
     var passwordCambiada by remember { mutableStateOf(false) }
+    val contexto = LocalContext.current
+    val estadoSync by Sincronizador.estado.collectAsState()
+    val pendientes by Sincronizador.pendientes.collectAsState()
+    val cambios by Sincronizador.cambios.collectAsState()
 
     // El viaje abierto y los ya cerrados salen de la misma lista.
     val viajeEnCurso = viajes.firstOrNull { it.enCurso }
@@ -76,15 +84,23 @@ fun AppAurora() {
         pantalla = if (p != null) Pantalla.Viajes else Pantalla.Login
     }
 
-    // Trae los viajes cada vez que cambia el chofer logueado o se pide recarga.
-    LaunchedEffect(perfil?.id, recarga) {
+    // Muestra lo que hay guardado en el telefono. Es instantaneo y funciona
+    // sin internet; la sincronizacion va por separado.
+    LaunchedEffect(perfil?.id, recarga, cambios) {
         val p = perfil ?: return@LaunchedEffect
         cargandoViajes = true
         errorViajes = null
-        runCatching { Datos.viajesDelChofer() }
+        runCatching { Almacen.viajes(p) }
             .onSuccess { viajes = it }
             .onFailure { errorViajes = mensajeDeError(it) }
         cargandoViajes = false
+    }
+
+    // Prende el sincronizador automatico: sube lo pendiente al entrar y queda
+    // atento a que aparezca conexion.
+    LaunchedEffect(perfil?.id) {
+        val p = perfil ?: return@LaunchedEffect
+        Sincronizador.arrancar(contexto)
         empresa = Datos.nombreEmpresa(p) ?: ""
     }
 
@@ -156,17 +172,28 @@ fun AppAurora() {
                 onAbrirViaje = { pantalla = Pantalla.Detalle(it) },
                 onIrAConfiguracion = { pantalla = Pantalla.Configuracion },
                 nombreChofer = perfil?.nombreCompleto ?: "",
+                estadoSync = estadoSync,
+                pendientesSync = pendientes,
                 cargando = cargandoViajes,
                 error = errorViajes,
                 finalizando = finalizando,
+                onSimularEvento = { tipo, nivel ->
+                    val p = perfil ?: return@PantallaViajes
+                    val abierto = viajeEnCurso ?: return@PantallaViajes
+                    alcance.launch {
+                        Almacen.registrarEvento(p, abierto.id, tipo, nivel)
+                        Sincronizador.huboNovedades()
+                    }
+                },
                 onFinalizarViaje = {
                     val abierto = viajeEnCurso ?: return@PantallaViajes
                     finalizando = true
                     alcance.launch {
-                        Datos.finalizarViaje(abierto.id)
+                        Almacen.finalizarViaje(abierto.id)
                             .onFailure { errorViajes = mensajeDeError(it) }
                         finalizando = false
-                        recarga++
+                        // Al terminar el viaje se intenta subir todo.
+                        Sincronizador.huboNovedades()
                     }
                 }
             )
@@ -182,10 +209,12 @@ fun AppAurora() {
                     guardandoViaje = true
                     errorNuevoViaje = null
                     alcance.launch {
-                        Datos.iniciarViaje(p, origen, destino)
+                        Almacen.iniciarViaje(p, origen, destino)
                             .onSuccess {
-                                recarga++
                                 pantalla = Pantalla.Viajes
+                                // Si hay senal, el viaje aparece enseguida en
+                                // la web del admin; si no, queda pendiente.
+                                Sincronizador.huboNovedades()
                             }
                             .onFailure { errorNuevoViaje = mensajeDeError(it) }
                         guardandoViaje = false
@@ -206,6 +235,8 @@ fun AppAurora() {
                 temaOscuro = temaOscuro,
                 onCambiarTema = { temaOscuro = it },
                 onIrAViajes = { pantalla = Pantalla.Viajes },
+                estadoSync = estadoSync,
+                pendientes = pendientes,
                 nombreChofer = perfil?.nombreCompleto ?: "",
                 usuario = perfil?.usuario ?: "",
                 empresa = empresa,
@@ -215,7 +246,11 @@ fun AppAurora() {
                     pantalla = Pantalla.CambiarPassword
                 },
                 onCerrarSesion = {
-                    alcance.launch { Sesion.salir() }
+                    alcance.launch {
+                        Almacen.limpiarLoSubido()
+                        Sesion.salir()
+                    }
+                    Sincronizador.reiniciar()
                     perfil = null
                     viajes = emptyList()
                     empresa = ""

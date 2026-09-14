@@ -6,24 +6,22 @@ import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.UUID
 
 // ============================================================================
-// Las filas, tal como estan en la base de datos
+// Las filas, tal como viajan hacia y desde Supabase
 // ============================================================================
-// Estas clases son el "molde" para leer el JSON que devuelve Supabase.
-// Los nombres tienen que coincidir con las columnas; cuando no coinciden
-// (chofer_id vs choferId) se aclara con @SerialName.
+// Son el "molde" del JSON. Los nombres tienen que coincidir con las columnas;
+// cuando no coinciden (chofer_id vs choferId) se aclara con @SerialName.
 
 @Serializable
 data class ViajeFila(
     val id: String,
+    @SerialName("empresa_id") val empresaId: String? = null,
     @SerialName("chofer_id") val choferId: String? = null,
     val inicio: String? = null,
     val fin: String? = null,
@@ -36,112 +34,65 @@ data class ViajeFila(
 data class EventoFila(
     val id: String,
     @SerialName("viaje_id") val viajeId: String,
+    @SerialName("empresa_id") val empresaId: String? = null,
     val tipo: String,
     val nivel: Int,
     @SerialName("ocurrido_en") val ocurridoEn: String? = null,
     val valor: Double? = null
 )
 
-// Molde para dar de alta un viaje. El id lo genera la app (no la base) para
-// que mas adelante se pueda reintentar el envio sin duplicar el viaje.
-@Serializable
-private data class ViajeNuevo(
-    val id: String,
-    @SerialName("empresa_id") val empresaId: String,
-    @SerialName("chofer_id") val choferId: String,
-    val inicio: String,
-    val estado: String,
-    val origen: String,
-    val destino: String
-)
-
-// Molde para cerrar un viaje
-@Serializable
-private data class ViajeCierre(
-    val fin: String,
-    val estado: String
-)
-
 @Serializable
 private data class EmpresaFila(val nombre: String)
 
 // ============================================================================
-// Lecturas y escrituras contra Supabase
+// Subidas y bajadas contra Supabase
 // ============================================================================
 object Datos {
 
-    /** Todos los viajes del chofer logueado, con sus eventos, mas nuevo primero. */
-    suspend fun viajesDelChofer(): List<Viaje> {
-        val uid = supabase.auth.currentUserOrNull()?.id ?: return emptyList()
+    /**
+     * Sube viajes. Usa "upsert": si el viaje ya estaba (porque el envio
+     * anterior llego pero no alcanzamos a marcarlo como subido), lo pisa en
+     * vez de crear un duplicado. Por eso el id lo genera la app.
+     */
+    suspend fun subirViajes(viajes: List<ViajeLocal>) {
+        if (viajes.isEmpty()) return
+        supabase.from("viajes").upsert(viajes.map { it.aFila() })
+    }
 
-        val viajes = supabase.from("viajes")
+    suspend fun subirEventos(eventos: List<EventoLocal>) {
+        if (eventos.isEmpty()) return
+        supabase.from("eventos").upsert(eventos.map { it.aFila() })
+    }
+
+    /** Trae los viajes del chofer que estan en la nube. */
+    suspend fun bajarViajes(): List<ViajeLocal> {
+        val uid = supabase.auth.currentUserOrNull()?.id ?: return emptyList()
+        return supabase.from("viajes")
             .select(
-                Columns.list("id", "chofer_id", "inicio", "fin", "estado", "origen", "destino")
+                Columns.list(
+                    "id", "empresa_id", "chofer_id", "inicio", "fin",
+                    "estado", "origen", "destino"
+                )
             ) {
                 filter { eq("chofer_id", uid) }
                 order("inicio", Order.DESCENDING)
                 limit(100)
             }
             .decodeList<ViajeFila>()
+            .map { it.aLocal() }
+    }
 
-        // Las reglas de la base (RLS) ya hacen que solo lleguen los eventos
-        // de los viajes de este chofer, asi que no hace falta filtrar de nuevo.
-        val eventosPorViaje = supabase.from("eventos")
+    /** Trae los eventos de esos viajes (las reglas RLS ya filtran por chofer). */
+    suspend fun bajarEventos(): List<EventoLocal> =
+        supabase.from("eventos")
             .select(
-                Columns.list("id", "viaje_id", "tipo", "nivel", "ocurrido_en", "valor")
+                Columns.list("id", "viaje_id", "empresa_id", "tipo", "nivel", "ocurrido_en", "valor")
             ) {
                 order("ocurrido_en", Order.DESCENDING)
                 limit(1000)
             }
             .decodeList<EventoFila>()
-            .groupBy { it.viajeId }
-
-        return viajes.map { fila -> armarViaje(fila, eventosPorViaje[fila.id] ?: emptyList()) }
-    }
-
-    /** Da de alta un viaje nuevo en estado "en curso". */
-    suspend fun iniciarViaje(
-        perfil: Perfil,
-        origen: String,
-        destino: String
-    ): Result<Viaje> = runCatching {
-        val empresa = perfil.empresaId
-            ?: error("Tu usuario no tiene empresa asignada. Avisale a tu supervisor.")
-
-        val nuevo = ViajeNuevo(
-            id = UUID.randomUUID().toString(),
-            empresaId = empresa,
-            choferId = perfil.id,
-            inicio = Instant.now().toString(),
-            estado = "en_curso",
-            origen = origen.trim().ifBlank { "Origen" },
-            destino = destino.trim().ifBlank { "Destino" }
-        )
-
-        supabase.from("viajes").insert(nuevo)
-
-        armarViaje(
-            ViajeFila(
-                id = nuevo.id,
-                choferId = nuevo.choferId,
-                inicio = nuevo.inicio,
-                estado = nuevo.estado,
-                origen = nuevo.origen,
-                destino = nuevo.destino
-            ),
-            emptyList()
-        )
-    }
-
-    /** Cierra el viaje: guarda la hora de fin y lo pasa a "finalizado". */
-    suspend fun finalizarViaje(idViaje: String): Result<Unit> = runCatching {
-        supabase.from("viajes").update(
-            ViajeCierre(fin = Instant.now().toString(), estado = "finalizado")
-        ) {
-            filter { eq("id", idViaje) }
-        }
-        Unit
-    }
+            .map { it.aLocal() }
 
     /** Nombre de la empresa del chofer. Devuelve null si no se puede leer. */
     suspend fun nombreEmpresa(perfil: Perfil): String? {
@@ -158,7 +109,7 @@ object Datos {
 }
 
 // ============================================================================
-// De filas de la base a lo que muestran las pantallas
+// Traducciones entre los tres formatos: nube, base local y pantalla
 // ============================================================================
 
 private val ZONA: ZoneId = ZoneId.systemDefault()
@@ -166,15 +117,104 @@ private val FORMATO_FECHA = DateTimeFormatter.ofPattern("dd MMM", Locale("es"))
 private val FORMATO_HORA = DateTimeFormatter.ofPattern("HH:mm")
 private val FORMATO_SOLO_HORA = DateTimeFormatter.ofPattern("HH")
 
-/** Convierte el texto de fecha que manda Supabase a un instante de tiempo. */
-private fun aInstante(texto: String?): Instant? =
-    texto?.let { runCatching { OffsetDateTime.parse(it).toInstant() }.getOrNull() }
+/** Texto de fecha de Supabase -> milisegundos. */
+private fun aMilisegundos(texto: String?): Long? =
+    texto?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
 
-private fun fecha(momento: Instant?): String =
-    momento?.atZone(ZONA)?.format(FORMATO_FECHA) ?: "--"
+/** Milisegundos -> texto de fecha que entiende Supabase. */
+private fun aTexto(ms: Long): String = Instant.ofEpochMilli(ms).toString()
 
-private fun hora(momento: Instant?): String =
-    momento?.atZone(ZONA)?.format(FORMATO_HORA) ?: "--:--"
+// --- nube -> local ---
+
+private fun ViajeFila.aLocal() = ViajeLocal(
+    id = id,
+    empresaId = empresaId ?: "",
+    choferId = choferId ?: "",
+    inicioMs = aMilisegundos(inicio) ?: 0L,
+    finMs = aMilisegundos(fin),
+    estado = estado,
+    origen = origen ?: "-",
+    destino = destino ?: "-",
+    pendiente = false
+)
+
+private fun EventoFila.aLocal() = EventoLocal(
+    id = id,
+    viajeId = viajeId,
+    empresaId = empresaId ?: "",
+    tipo = tipo,
+    nivel = nivel,
+    ocurridoEnMs = aMilisegundos(ocurridoEn) ?: 0L,
+    valor = valor,
+    pendiente = false
+)
+
+// --- local -> nube ---
+
+private fun ViajeLocal.aFila() = ViajeFila(
+    id = id,
+    empresaId = empresaId,
+    choferId = choferId,
+    inicio = aTexto(inicioMs),
+    fin = finMs?.let { aTexto(it) },
+    estado = estado,
+    origen = origen,
+    destino = destino
+)
+
+private fun EventoLocal.aFila() = EventoFila(
+    id = id,
+    viajeId = viajeId,
+    empresaId = empresaId,
+    tipo = tipo,
+    nivel = nivel,
+    ocurridoEn = aTexto(ocurridoEnMs),
+    valor = valor
+)
+
+// --- local -> pantalla ---
+
+fun armarViaje(viaje: ViajeLocal, eventos: List<EventoLocal>): Viaje {
+    val enCurso = viaje.estado == "en_curso"
+    val hasta = viaje.finMs ?: System.currentTimeMillis()
+    val ordenados = eventos.sortedByDescending { it.ocurridoEnMs }
+    val (porHora, etiquetas) = eventosPorHora(viaje.inicioMs, hasta, ordenados)
+
+    return Viaje(
+        id = viaje.id,
+        origen = viaje.origen,
+        destino = viaje.destino,
+        fecha = fecha(viaje.inicioMs),
+        duracion = duracionLegible(viaje.inicioMs, hasta),
+        horario = horaDelDia(viaje.inicioMs) + " -> " +
+                if (enCurso) "en curso" else horaDelDia(viaje.finMs ?: hasta),
+        inicioMs = viaje.inicioMs,
+        eventos = ordenados.map {
+            Evento(
+                hora = horaDelDia(it.ocurridoEnMs),
+                tipo = nombreTipo(it.tipo),
+                nivel = it.nivel
+            )
+        },
+        enCurso = enCurso,
+        // Si el viaje o alguno de sus eventos todavia no se subio, se avisa.
+        sincronizado = !viaje.pendiente && ordenados.none { it.pendiente },
+        eventosPorHora = porHora,
+        etiquetasHora = etiquetas,
+        resumen = resumen(ordenados)
+    )
+}
+
+// ============================================================================
+// Formatos de fecha, hora y duracion
+// ============================================================================
+
+private fun fecha(ms: Long): String =
+    Instant.ofEpochMilli(ms).atZone(ZONA).format(FORMATO_FECHA)
+
+/** Hora del reloj (HH:MM) de un momento cualquiera. */
+fun horaDelDia(momentoMs: Long): String =
+    Instant.ofEpochMilli(momentoMs).atZone(ZONA).format(FORMATO_HORA)
 
 /** Duracion en texto legible: "4 h 12 min", "12 min" o "40 s". */
 fun duracionLegible(desdeMs: Long?, hastaMs: Long): String {
@@ -199,68 +239,30 @@ fun cronometro(desdeMs: Long?, hastaMs: Long): String {
     )
 }
 
-/** Hora del reloj (HH:MM) de un momento cualquiera. */
-fun horaDelDia(momentoMs: Long): String =
-    Instant.ofEpochMilli(momentoMs).atZone(ZONA).format(FORMATO_HORA)
-
 private fun nombreTipo(tipo: String): String = when (tipo) {
     "parpadeo_lento" -> "Parpadeo lento"
     "cabeceo" -> "Cabeceo"
     else -> "Otro"
 }
 
-private fun armarViaje(fila: ViajeFila, eventos: List<EventoFila>): Viaje {
-    val inicio = aInstante(fila.inicio)
-    val fin = aInstante(fila.fin)
-    val enCurso = fila.estado == "en_curso"
-    // Si el viaje sigue abierto, la duracion se cuenta hasta ahora.
-    val hasta = fin ?: Instant.now()
-
-    val ordenados = eventos.sortedByDescending { it.ocurridoEn ?: "" }
-    val (porHora, etiquetas) = eventosPorHora(inicio, hasta, ordenados)
-
-    return Viaje(
-        id = fila.id,
-        origen = fila.origen ?: "-",
-        destino = fila.destino ?: "-",
-        fecha = fecha(inicio),
-        duracion = duracionLegible(inicio?.toEpochMilli(), hasta.toEpochMilli()),
-        horario = hora(inicio) + " -> " + if (enCurso) "en curso" else hora(fin),
-        inicioMs = inicio?.toEpochMilli(),
-        eventos = ordenados.map {
-            Evento(
-                hora = hora(aInstante(it.ocurridoEn)),
-                tipo = nombreTipo(it.tipo),
-                nivel = it.nivel
-            )
-        },
-        enCurso = enCurso,
-        sincronizado = true,
-        eventosPorHora = porHora,
-        etiquetasHora = etiquetas,
-        resumen = resumen(ordenados)
-    )
-}
-
 /** Cuenta cuantos eventos hubo en cada hora del viaje, para el grafico. */
 private fun eventosPorHora(
-    inicio: Instant?,
-    hasta: Instant,
-    eventos: List<EventoFila>
+    inicioMs: Long,
+    hastaMs: Long,
+    eventos: List<EventoLocal>
 ): Pair<List<Int>, List<String>> {
-    if (inicio == null || eventos.isEmpty()) return emptyList<Int>() to emptyList()
+    if (eventos.isEmpty()) return emptyList<Int>() to emptyList()
 
-    val primeraHora = inicio.atZone(ZONA).withMinute(0).withSecond(0).withNano(0)
-    val cantidad = (Duration.between(primeraHora, hasta.atZone(ZONA)).toHours().toInt() + 1)
-        .coerceIn(1, 24)
+    val primeraHora = Instant.ofEpochMilli(inicioMs).atZone(ZONA)
+        .withMinute(0).withSecond(0).withNano(0)
+    val primeraHoraMs = primeraHora.toInstant().toEpochMilli()
+    val unaHora = 3_600_000L
+    val cantidad = (((hastaMs - primeraHoraMs) / unaHora).toInt() + 1).coerceIn(1, 24)
 
     val baldes = IntArray(cantidad)
     eventos.forEach { evento ->
-        val momento = aInstante(evento.ocurridoEn)?.atZone(ZONA)
-        if (momento != null) {
-            val indice = Duration.between(primeraHora, momento).toHours().toInt()
-            if (indice in 0 until cantidad) baldes[indice]++
-        }
+        val indice = ((evento.ocurridoEnMs - primeraHoraMs) / unaHora).toInt()
+        if (indice in 0 until cantidad) baldes[indice]++
     }
 
     val etiquetas = if (cantidad >= 3) {
@@ -273,7 +275,7 @@ private fun eventosPorHora(
     return baldes.toList() to etiquetas
 }
 
-private fun resumen(eventos: List<EventoFila>): String {
+private fun resumen(eventos: List<EventoLocal>): String {
     if (eventos.isEmpty()) return ""
     val nivel2 = eventos.count { it.nivel >= 2 }
     return if (nivel2 > 0) {

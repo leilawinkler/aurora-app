@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudOff
@@ -29,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -41,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -54,10 +58,13 @@ fun PantallaViajes(
     onAbrirViaje: (Viaje) -> Unit,
     onIrAConfiguracion: () -> Unit,
     nombreChofer: String = "",
+    estadoSync: EstadoSync = EstadoSync.SINCRONIZADO,
+    pendientesSync: Int = 0,
     cargando: Boolean = false,
     error: String? = null,
     finalizando: Boolean = false,
-    onFinalizarViaje: () -> Unit = {}
+    onFinalizarViaje: () -> Unit = {},
+    onSimularEvento: (String, Int) -> Unit = { _, _ -> }
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -113,13 +120,16 @@ fun PantallaViajes(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item { CartelSync(estadoSync, pendientesSync) }
+
                 if (viajeEnCurso != null) {
                     item {
                         TarjetaViajeEnCurso(
                             viaje = viajeEnCurso,
                             finalizando = finalizando,
                             onFinalizar = onFinalizarViaje,
-                            onAbrir = { onAbrirViaje(viajeEnCurso) }
+                            onAbrir = { onAbrirViaje(viajeEnCurso) },
+                            onSimularEvento = onSimularEvento
                         )
                     }
                 }
@@ -181,7 +191,8 @@ private fun TarjetaViajeEnCurso(
     viaje: Viaje,
     finalizando: Boolean,
     onFinalizar: () -> Unit,
-    onAbrir: () -> Unit
+    onAbrir: () -> Unit,
+    onSimularEvento: (String, Int) -> Unit
 ) {
     Card(
         onClick = onAbrir,
@@ -248,6 +259,33 @@ private fun TarjetaViajeEnCurso(
                             style = NumeroMediano,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+
+                // --- Simulador: ocupa el lugar del ESP32 hasta que este ---
+                Text(
+                    "simulador (prueba)",
+                    style = EtiquetaMono,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 20.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onSimularEvento("parpadeo_lento", 1) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Parpadeo")
+                    }
+                    OutlinedButton(
+                        onClick = { onSimularEvento("cabeceo", 2) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cabeceo")
                     }
                 }
 
@@ -368,4 +406,41 @@ private fun ahoraQueLate(): Long {
         }
     }
     return ahora
+}
+
+/**
+ * Cartel de estado de la sincronizacion. El chofer no tiene que hacer nada
+ * con el: solo le dice como estan las cosas.
+ */
+@Composable
+private fun CartelSync(estado: EstadoSync, pendientes: Int) {
+    val (texto, color) = when (estado) {
+        EstadoSync.SINCRONIZANDO ->
+            "sincronizando..." to MaterialTheme.colorScheme.secondary
+        EstadoSync.SINCRONIZADO ->
+            "sincronizado" to MaterialTheme.colorScheme.onSurfaceVariant
+        EstadoSync.SIN_CONEXION ->
+            (if (pendientes > 0) "sin conexion - $pendientes sin subir" else "sin conexion") to
+                    MaterialTheme.colorScheme.error
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(
+            texto,
+            style = EtiquetaMono,
+            color = color,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+    }
 }

@@ -35,7 +35,9 @@ fun PantallaConfiguracion(
     nombreChofer: String = "",
     usuario: String = "",
     empresa: String = "",
-    onCambiarPassword: () -> Unit = {}
+    onCambiarPassword: () -> Unit = {},
+    estadoSync: EstadoSync = EstadoSync.SINCRONIZADO,
+    pendientes: Int = 0
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -117,6 +119,30 @@ fun PantallaConfiguracion(
                 ) {
                     Text("Recalibrar")
                 }
+            }
+
+            // Sincronizacion
+            Seccion("sincronizacion") {
+                FilaDato(
+                    "Estado",
+                    when (estadoSync) {
+                        EstadoSync.SINCRONIZANDO -> "sincronizando..."
+                        EstadoSync.SINCRONIZADO -> "sincronizado"
+                        EstadoSync.SIN_CONEXION -> "sin conexion"
+                    },
+                    resaltado = estadoSync == EstadoSync.SIN_CONEXION
+                )
+                FilaDato(
+                    "Sin subir",
+                    if (pendientes == 0) "nada pendiente" else "$pendientes registros",
+                    resaltado = pendientes > 0
+                )
+                Text(
+                    "Se sube solo cuando hay conexion.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
 
             // Cuenta
