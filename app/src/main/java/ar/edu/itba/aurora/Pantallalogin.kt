@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 fun PantallaLogin(
     cargando: Boolean = false,
     error: String? = null,
+    onOlvide: () -> Unit = {},
     onIngresar: (String, String) -> Unit
 ) {
     var usuario by remember { mutableStateOf("") }
@@ -138,10 +140,18 @@ fun PantallaLogin(
                 Text(if (cargando) "Ingresando..." else "Ingresar")
             }
 
+            TextButton(
+                onClick = onOlvide,
+                enabled = !cargando,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text("¿Olvidaste tu contraseña?")
+            }
+
             HorizontalDivider(
                 thickness = 0.5.dp,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 24.dp)
+                modifier = Modifier.padding(top = 16.dp)
             )
             Text(
                 text = "Si no podes entrar, habla con tu supervisor.",

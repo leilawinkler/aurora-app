@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,15 +33,19 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
- * Cambio de contraseña. Se llega desde Configuracion y siempre se puede
- * volver con la flecha.
+ * Cambio de contraseña. Tiene dos usos:
+ *  - Voluntario: se llega desde Configuracion y se puede volver con la flecha.
+ *  - Obligatorio: el chofer entro con una contraseña temporal. No hay flecha
+ *    para volver; solo puede cambiarla o cerrar sesion.
  */
 @Composable
 fun PantallaCambiarPassword(
     cargando: Boolean = false,
     error: String? = null,
     listo: Boolean = false,
+    obligatorio: Boolean = false,
     onVolver: () -> Unit = {},
+    onCerrarSesion: () -> Unit = {},
     onGuardar: (String) -> Unit
 ) {
     var nueva by remember { mutableStateOf("") }
@@ -60,16 +65,20 @@ fun PantallaCambiarPassword(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
-            IconButton(onClick = onVolver, modifier = Modifier.padding(top = 8.dp)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (obligatorio) {
+                Box(Modifier.padding(top = 24.dp))
+            } else {
+                IconButton(onClick = onVolver, modifier = Modifier.padding(top = 8.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Text(
-                "Cambiar contraseña",
+                if (obligatorio) "Elegí tu contraseña" else "Cambiar contraseña",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(top = 8.dp)
@@ -95,11 +104,15 @@ fun PantallaCambiarPassword(
                         .fillMaxWidth()
                         .padding(top = 26.dp, bottom = 32.dp)
                 ) {
-                    Text("Volver a configuracion")
+                    Text(if (obligatorio) "Continuar" else "Volver a configuracion")
                 }
             } else {
                 Text(
-                    "Elegi una contraseña nueva, de al menos 6 caracteres.",
+                    if (obligatorio)
+                        "Estas usando una contraseña temporal. Para seguir, elegi una " +
+                                "nueva, de al menos 6 caracteres."
+                    else
+                        "Elegi una contraseña nueva, de al menos 6 caracteres.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 24.dp)
@@ -172,6 +185,18 @@ fun PantallaCambiarPassword(
                         .padding(top = 26.dp, bottom = 32.dp)
                 ) {
                     Text(if (cargando) "Guardando..." else "Guardar contraseña")
+                }
+
+                if (obligatorio) {
+                    TextButton(
+                        onClick = onCerrarSesion,
+                        enabled = !cargando,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 32.dp)
+                    ) {
+                        Text("Cerrar sesion")
+                    }
                 }
             }
         }

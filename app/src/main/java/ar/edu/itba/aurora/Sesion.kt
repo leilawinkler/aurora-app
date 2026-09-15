@@ -5,8 +5,13 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 // Ficha del usuario logueado, tal como esta en la tabla "usuarios".
 // @Serializable = "esta clase se puede armar a partir del JSON que devuelve
@@ -96,6 +101,54 @@ object Sesion {
         }
         Unit
     }
+
+    /**
+     * "Olvide mi contraseña". Llama a la Edge Function recuperar-password con
+     * el usuario y el mail de contacto. No hace falta estar logueado.
+     *
+     * Se usa una conexion HTTP comun (sin librerias nuevas) para no tocar
+     * las versiones del proyecto.
+     *
+     * Devuelve el mensaje para mostrar si salio bien, o el error si no.
+     */
+    suspend fun recuperarPassword(usuario: String, mail: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val cuerpo = JSONObject()
+                    .put("usuario", usuario.trim().lowercase())
+                    .put("mail", mail.trim().lowercase())
+                    .toString()
+
+                val conexion = URL("$SUPABASE_URL/functions/v1/recuperar-password")
+                    .openConnection() as HttpURLConnection
+                try {
+                    conexion.requestMethod = "POST"
+                    conexion.connectTimeout = 15_000
+                    conexion.readTimeout = 20_000
+                    conexion.doOutput = true
+                    conexion.setRequestProperty("Content-Type", "application/json")
+                    conexion.setRequestProperty("apikey", SUPABASE_CLAVE)
+                    conexion.outputStream.use { it.write(cuerpo.toByteArray(Charsets.UTF_8)) }
+
+                    val codigo = conexion.responseCode
+                    val flujo = if (codigo in 200..299) conexion.inputStream else conexion.errorStream
+                    val texto = flujo?.bufferedReader()?.use { it.readText() } ?: ""
+                    val respuesta = runCatching { JSONObject(texto) }.getOrNull()
+
+                    if (codigo in 200..299) {
+                        respuesta?.optString("mensaje")?.takeIf { it.isNotBlank() }
+                            ?: "Si el usuario y el mail coinciden, te llega un mail."
+                    } else {
+                        error(
+                            respuesta?.optString("error")?.takeIf { it.isNotBlank() }
+                                ?: "No se pudo enviar el pedido (codigo $codigo)."
+                        )
+                    }
+                } finally {
+                    conexion.disconnect()
+                }
+            }
+        }
 }
 
 @Serializable

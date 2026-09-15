@@ -92,3 +92,19 @@ fun VistaPreviaCambiarPassword() {
         PantallaCambiarPassword(onGuardar = {})
     }
 }
+
+@Preview(name = "Cambiar contraseña - obligatorio", showBackground = true, heightDp = 800)
+@Composable
+fun VistaPreviaCambiarPasswordObligatorio() {
+    AuroraTheme(oscuro = true) {
+        PantallaCambiarPassword(obligatorio = true, onGuardar = {})
+    }
+}
+
+@Preview(name = "Recuperar contraseña", showBackground = true, heightDp = 800)
+@Composable
+fun VistaPreviaRecuperar() {
+    AuroraTheme(oscuro = true) {
+        PantallaRecuperar(onEnviar = { _, _ -> }, onVolver = {})
+    }
+}

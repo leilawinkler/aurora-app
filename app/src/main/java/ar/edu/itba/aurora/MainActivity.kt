@@ -28,8 +28,15 @@ sealed class Pantalla {
     data object NuevoViaje : Pantalla()
     data object Configuracion : Pantalla()
     data class Detalle(val viaje: Viaje) : Pantalla()
-    data object CambiarPassword : Pantalla()
+    // obligatorio = true cuando entro con una contraseña temporal
+    data class CambiarPassword(val obligatorio: Boolean = false) : Pantalla()
+    data object Recuperar : Pantalla()
 }
+
+/** A donde va el chofer despues de entrar: a cambiar la contraseña si es temporal. */
+private fun pantallaAlEntrar(p: Perfil): Pantalla =
+    if (p.debeCambiarPassword) Pantalla.CambiarPassword(obligatorio = true)
+    else Pantalla.Viajes
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +74,10 @@ fun AppAurora() {
     var cambiandoPassword by remember { mutableStateOf(false) }
     var errorPassword by remember { mutableStateOf<String?>(null) }
     var passwordCambiada by remember { mutableStateOf(false) }
+    var usuarioEscrito by remember { mutableStateOf("") }
+    var enviandoRecuperar by remember { mutableStateOf(false) }
+    var errorRecuperar by remember { mutableStateOf<String?>(null) }
+    var mensajeRecuperar by remember { mutableStateOf<String?>(null) }
     val contexto = LocalContext.current
     val estadoSync by Sincronizador.estado.collectAsState()
     val pendientes by Sincronizador.pendientes.collectAsState()
@@ -81,7 +92,22 @@ fun AppAurora() {
         Sesion.esperarInicio()
         val p = runCatching { Sesion.perfil() }.getOrNull()
         perfil = p
-        pantalla = if (p != null) Pantalla.Viajes else Pantalla.Login
+        pantalla = if (p != null) pantallaAlEntrar(p) else Pantalla.Login
+    }
+
+    // Cerrar sesion: se usa desde Configuracion y desde el cambio obligatorio.
+    val cerrarSesion: () -> Unit = {
+        alcance.launch {
+            Almacen.limpiarLoSubido()
+            Sesion.salir()
+        }
+        Sincronizador.reiniciar()
+        perfil = null
+        viajes = emptyList()
+        empresa = ""
+        passwordCambiada = false
+        errorPassword = null
+        pantalla = Pantalla.Login
     }
 
     // Muestra lo que hay guardado en el telefono. Es instantaneo y funciona
@@ -121,17 +147,47 @@ fun AppAurora() {
             PantallaLogin(
                 cargando = cargandoLogin,
                 error = errorLogin,
+                onOlvide = {
+                    errorLogin = null
+                    errorRecuperar = null
+                    mensajeRecuperar = null
+                    pantalla = Pantalla.Recuperar
+                },
                 onIngresar = { usuario, clave ->
+                    usuarioEscrito = usuario
                     cargandoLogin = true
                     errorLogin = null
                     alcance.launch {
                         Sesion.entrar(usuario, clave)
                             .onSuccess {
                                 perfil = it
-                                pantalla = Pantalla.Viajes
+                                passwordCambiada = false
+                                errorPassword = null
+                                pantalla = pantallaAlEntrar(it)
                             }
                             .onFailure { errorLogin = mensajeDeError(it) }
                         cargandoLogin = false
+                    }
+                }
+            )
+        }
+
+        is Pantalla.Recuperar -> AuroraTheme(oscuro = true) {
+            PantallaRecuperar(
+                usuarioInicial = usuarioEscrito,
+                cargando = enviandoRecuperar,
+                mensajeOk = mensajeRecuperar,
+                error = errorRecuperar,
+                onVolver = { pantalla = Pantalla.Login },
+                onEnviar = { usuario, mail ->
+                    usuarioEscrito = usuario
+                    enviandoRecuperar = true
+                    errorRecuperar = null
+                    alcance.launch {
+                        Sesion.recuperarPassword(usuario, mail)
+                            .onSuccess { mensajeRecuperar = it }
+                            .onFailure { errorRecuperar = mensajeDeError(it) }
+                        enviandoRecuperar = false
                     }
                 }
             )
@@ -142,16 +198,21 @@ fun AppAurora() {
                 cargando = cambiandoPassword,
                 error = errorPassword,
                 listo = passwordCambiada,
+                obligatorio = actual.obligatorio,
                 onVolver = {
                     passwordCambiada = false
-                    pantalla = Pantalla.Configuracion
+                    pantalla = if (actual.obligatorio) Pantalla.Viajes else Pantalla.Configuracion
                 },
+                onCerrarSesion = cerrarSesion,
                 onGuardar = { nueva ->
                     cambiandoPassword = true
                     errorPassword = null
                     alcance.launch {
                         Sesion.cambiarPassword(nueva)
-                            .onSuccess { passwordCambiada = true }
+                            .onSuccess {
+                                passwordCambiada = true
+                                perfil = perfil?.copy(debeCambiarPassword = false)
+                            }
                             .onFailure { errorPassword = mensajeDeError(it) }
                         cambiandoPassword = false
                     }
@@ -243,19 +304,9 @@ fun AppAurora() {
                 onCambiarPassword = {
                     errorPassword = null
                     passwordCambiada = false
-                    pantalla = Pantalla.CambiarPassword
+                    pantalla = Pantalla.CambiarPassword()
                 },
-                onCerrarSesion = {
-                    alcance.launch {
-                        Almacen.limpiarLoSubido()
-                        Sesion.salir()
-                    }
-                    Sincronizador.reiniciar()
-                    perfil = null
-                    viajes = emptyList()
-                    empresa = ""
-                    pantalla = Pantalla.Login
-                }
+                onCerrarSesion = cerrarSesion
             )
         }
     }
