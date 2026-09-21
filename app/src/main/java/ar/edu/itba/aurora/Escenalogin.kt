@@ -339,7 +339,7 @@ fun EscenaLogin(
         ) {
             Icon(
                 imageVector = if (temaOscuro) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                contentDescription = if (temaOscuro) "Cambiar a modo dia" else "Cambiar a modo noche",
+                contentDescription = if (temaOscuro) "Cambiar a modo día" else "Cambiar a modo noche",
                 tint = c.icono
             )
         }

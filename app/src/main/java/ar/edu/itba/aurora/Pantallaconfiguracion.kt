@@ -106,14 +106,14 @@ fun PantallaConfiguracion(
                         .fillMaxWidth()
                         .padding(top = 14.dp)
                 ) {
-                    Text("Vincular otro dispositivo")
+                    Text("Vincular")
                 }
             }
 
             // Calibración
-            Seccion("calibracion") {
+            Seccion("calibración") {
                 Text(
-                    "Ultima linea de base: 05 sep, 08:12. Recalibra si cambiaste la posicion de la vincha.",
+                    "Última línea de base: 05 sep, 08:12. Recalibrá si cambiaste la posición de la vincha.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -128,7 +128,7 @@ fun PantallaConfiguracion(
             }
 
             // Sincronizacion
-            Seccion("sincronizacion") {
+            Seccion("sincronización") {
                 FilaDato(
                     "Estado",
                     when (estadoSync) {
@@ -144,7 +144,7 @@ fun PantallaConfiguracion(
                     resaltado = pendientes > 0
                 )
                 Text(
-                    "Se sube solo cuando hay conexion.",
+                    "Se sube solo cuando hay conexión.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp)
@@ -168,7 +168,7 @@ fun PantallaConfiguracion(
 
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    "Cerrar sesion",
+                    "Cerrar sesión",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier

@@ -186,7 +186,7 @@ fun armarViaje(viaje: ViajeLocal, eventos: List<EventoLocal>): Viaje {
         destino = viaje.destino,
         fecha = fecha(viaje.inicioMs),
         duracion = duracionLegible(viaje.inicioMs, hasta),
-        horario = horaDelDia(viaje.inicioMs) + " -> " +
+        horario = horaDelDia(viaje.inicioMs) + " ➜ " +
                 if (enCurso) "en curso" else horaDelDia(viaje.finMs ?: hasta),
         inicioMs = viaje.inicioMs,
         finMs = viaje.finMs,

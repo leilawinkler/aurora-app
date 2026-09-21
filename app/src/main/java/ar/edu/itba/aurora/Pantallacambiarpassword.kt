@@ -93,8 +93,8 @@ fun PantallaCambiarPassword(
 
             if (listo) {
                 Text(
-                    "Listo, tu contraseña quedo cambiada. La proxima vez que entres " +
-                            "usa la nueva.",
+                    "Listo, tu contraseña quedó cambiada. La próxima vez que entres " +
+                            "usá la nueva.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -104,15 +104,15 @@ fun PantallaCambiarPassword(
                         .fillMaxWidth()
                         .padding(top = 26.dp, bottom = 32.dp)
                 ) {
-                    Text(if (obligatorio) "Continuar" else "Volver a configuracion")
+                    Text(if (obligatorio) "Continuar" else "Volver a configuración")
                 }
             } else {
                 Text(
                     if (obligatorio)
-                        "Estas usando una contraseña temporal. Para seguir, elegi una " +
+                        "Estas usando una contraseña temporal. Para seguir, elegí una " +
                                 "nueva, de al menos 6 caracteres."
                     else
-                        "Elegi una contraseña nueva, de al menos 6 caracteres.",
+                        "Elegí una contraseña nueva, de al menos 6 caracteres.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 24.dp)
@@ -195,7 +195,7 @@ fun PantallaCambiarPassword(
                             .fillMaxWidth()
                             .padding(bottom = 32.dp)
                     ) {
-                        Text("Cerrar sesion")
+                        Text("Cerrar sesión")
                     }
                 }
             }
