@@ -31,17 +31,50 @@ data class Perfil(
 }
 
 // Todo lo que tiene que ver con entrar, salir y saber quien esta logueado.
+/** Resultado de un ingreso: quien entro y si fue con o sin señal. */
+data class Ingreso(val perfil: Perfil, val sinConexion: Boolean)
+
+/** Resultado de abrir la app: entra directo, o va a la pantalla de ingreso. */
+sealed class Arranque {
+    data class Adentro(val perfil: Perfil, val sinConexion: Boolean) : Arranque()
+    data class Afuera(val motivo: String?) : Arranque()
+}
+
 object Sesion {
+
+    // Dias que puede pasar un chofer entrando sin señal. Pasado ese plazo
+    // necesita entrar una vez con señal: es la forma de enterarse, por
+    // ejemplo, de que el administrador lo dio de baja.
+    const val DIAS_VALIDEZ_SIN_SENAL = 7
+    private const val INTENTOS_ANTES_DE_BLOQUEAR = 5
+    private const val MINUTOS_DE_BLOQUEO = 5
+
+    // La contraseña que escribio el chofer al entrar, SOLO en memoria (nunca
+    // en disco). Sirve para abrir la sesion con Supabase sin molestarlo
+    // cuando vuelve la señal. Se pierde si Android cierra la app.
+    @Volatile
+    private var claveEnMemoria: String? = null
 
     /** Espera a que la libreria termine de leer la sesion guardada en el dispositivo. */
     suspend fun esperarInicio() = supabase.auth.awaitInitialization()
 
     /**
-     * Login con usuario + contraseña (no con mail).
-     * Devuelve el perfil si salio bien, o el error si algo fallo.
+     * Ingreso con usuario + contraseña.
+     *
+     * Primero intenta con señal, como siempre. Si falla por falta de señal
+     * (y solo en ese caso: una contraseña mal con señal es una contraseña
+     * mal), prueba sin señal contra la huella guardada en el telefono.
      */
-    suspend fun entrar(usuario: String, clave: String): Result<Perfil> = runCatching {
-        val mail = usuario.trim().lowercase() + "@" + DOMINIO_LOGIN
+    suspend fun entrar(usuario: String, clave: String): Result<Ingreso> {
+        val u = usuario.trim().lowercase()
+        val conSenal = runCatching { entrarConSenal(u, clave) }
+        val error = conSenal.exceptionOrNull() ?: return Result.success(Ingreso(conSenal.getOrThrow(), false))
+        if (!esErrorDeRed(error)) return Result.failure(error)
+        return entrarSinSenal(u, clave).map { Ingreso(it, sinConexion = true) }
+    }
+
+    private suspend fun entrarConSenal(usuario: String, clave: String): Perfil {
+        val mail = usuario + "@" + DOMINIO_LOGIN
 
         supabase.auth.signInWith(Email) {
             email = mail
@@ -65,7 +98,148 @@ object Sesion {
             supabase.auth.signOut()
             error("Esta app es solo para conductores. Ingresá desde la web.")
         }
-        p
+
+        recordarIngreso(p, clave)
+        return p
+    }
+
+    /** Despues de un ingreso con señal: deja todo listo para entrar sin señal. */
+    private suspend fun recordarIngreso(p: Perfil, clave: String) {
+        claveEnMemoria = clave
+        Preferencias.perfilGuardado = p
+        val sal = ClaveSinSenal.salNueva()
+        Preferencias.guardarCredencial(
+            CredencialSinSenal(
+                usuario = p.usuario.lowercase(),
+                perfil = p,
+                sal = sal,
+                huella = ClaveSinSenal.huella(clave, sal),
+                iteraciones = ClaveSinSenal.ITERACIONES,
+                ultimoIngresoConSenalMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    /** Ingreso sin señal, contra la huella guardada en el telefono. */
+    private suspend fun entrarSinSenal(usuario: String, clave: String): Result<Perfil> = runCatching {
+        val cred = Preferencias.credencialDe(usuario)
+            ?: error(
+                "No hay conexión. Para entrar sin señal, primero tenés que haber " +
+                    "ingresado una vez con señal en este teléfono."
+            )
+
+        val ahora = System.currentTimeMillis()
+        if (ahora < cred.bloqueadoHastaMs) {
+            val minutos = ((cred.bloqueadoHastaMs - ahora) / 60_000) + 1
+            error("Demasiados intentos. Probá de nuevo en $minutos minutos.")
+        }
+
+        val vence = cred.ultimoIngresoConSenalMs + DIAS_VALIDEZ_SIN_SENAL * 24L * 3_600_000L
+        if (ahora > vence) {
+            error(
+                "Pasaron más de $DIAS_VALIDEZ_SIN_SENAL días sin que entres con señal. " +
+                    "Necesitás conexión para volver a ingresar."
+            )
+        }
+
+        if (!ClaveSinSenal.coincide(clave, cred)) {
+            val fallos = cred.fallos + 1
+            val bloqueo = fallos >= INTENTOS_ANTES_DE_BLOQUEAR
+            Preferencias.guardarCredencial(
+                cred.copy(
+                    fallos = if (bloqueo) 0 else fallos,
+                    bloqueadoHastaMs = if (bloqueo) ahora + MINUTOS_DE_BLOQUEO * 60_000L else 0L
+                )
+            )
+            error("Usuario o contraseña incorrecta")
+        }
+
+        Preferencias.guardarCredencial(cred.copy(fallos = 0, bloqueadoHastaMs = 0L))
+        claveEnMemoria = clave
+        Preferencias.perfilGuardado = cred.perfil
+        cred.perfil
+    }
+
+    /**
+     * Decide que hacer al abrir la app. Si el chofer no cerro sesion, entra
+     * directo, haya señal o no: la app lo conoce por la ficha guardada.
+     */
+    suspend fun alAbrir(): Arranque {
+        esperarInicio()
+        val guardado = Preferencias.perfilGuardado
+
+        // Con señal y sesion de Supabase: se refresca la ficha y se hacen
+        // los mismos controles que al ingresar.
+        if (supabase.auth.currentUserOrNull() != null) {
+            val enLinea = runCatching { perfil() }.getOrNull()
+            if (enLinea != null) {
+                val motivo = motivoDeBloqueo()
+                if (motivo != null) {
+                    // La cuenta fue dada de baja: esto no es un corte de
+                    // señal, es una decision del administrador.
+                    expulsar()
+                    return Arranque.Afuera(motivo)
+                }
+                if (enLinea.rol != "chofer") {
+                    salir()
+                    return Arranque.Afuera(null)
+                }
+                Preferencias.perfilGuardado = enLinea
+                return Arranque.Adentro(enLinea, sinConexion = false)
+            }
+        }
+
+        // Sin señal (o con la sesion de Supabase sin renovar): vale la ficha.
+        if (guardado != null) return Arranque.Adentro(guardado, sinConexion = true)
+        return Arranque.Afuera(null)
+    }
+
+    /**
+     * Intenta tener sesion con Supabase para poder subir. La llama el
+     * sincronizador. Nunca saca al chofer de la app: si no puede, devuelve
+     * false y se reintenta mas tarde.
+     */
+    suspend fun reconectar(): Boolean {
+        if (supabase.auth.currentUserOrNull() != null) return true
+
+        // 1) La sesion guardada, renovada ahora que quizas hay señal
+        runCatching { supabase.auth.loadFromStorage() }
+        if (supabase.auth.currentUserOrNull() != null) return true
+
+        // 2) La contraseña que escribio al entrar, si sigue en memoria
+        val clave = claveEnMemoria ?: return false
+        val p = Preferencias.perfilGuardado ?: return false
+        val intento = runCatching {
+            supabase.auth.signInWith(Email) {
+                email = p.usuario.lowercase() + "@" + DOMINIO_LOGIN
+                password = clave
+            }
+            recordarIngreso(p, clave)
+            true
+        }
+        // Si fallo por algo que no es la señal (por ejemplo, le cambiaron la
+        // contraseña mientras estaba sin señal), la de memoria ya no sirve:
+        // se descarta para que la app le pida la nueva.
+        val error = intento.exceptionOrNull()
+        if (error != null && !esErrorDeRed(error)) claveEnMemoria = null
+        return intento.getOrDefault(false)
+    }
+
+    /** true si hace falta pedirle la contraseña al chofer para poder subir. */
+    val necesitaClave: Boolean
+        get() = claveEnMemoria == null && supabase.auth.currentUserOrNull() == null
+
+    /**
+     * El chofer escribe su contraseña desde el aviso de "hay viajes sin
+     * subir". Necesita señal.
+     */
+    suspend fun reingresarClave(clave: String): Result<Unit> = runCatching {
+        val p = Preferencias.perfilGuardado ?: error("No hay un chofer adentro de la app.")
+        supabase.auth.signInWith(Email) {
+            email = p.usuario.lowercase() + "@" + DOMINIO_LOGIN
+            password = clave
+        }
+        recordarIngreso(p, clave)
     }
 
     /**
@@ -107,7 +281,34 @@ object Sesion {
             .decodeSingleOrNull()
     }
 
-    suspend fun salir() = supabase.auth.signOut()
+    /**
+     * Cierra la sesion. Es lo UNICO que saca al chofer de la app, y solo
+     * pasa cuando el lo pide (o si el administrador lo dio de baja).
+     *
+     * La huella para entrar sin señal NO se borra: si cierra sesion en el
+     * medio de la ruta, puede volver a entrar sin señal con su contraseña.
+     */
+    suspend fun salir() {
+        claveEnMemoria = null
+        Preferencias.perfilGuardado = null
+        Preferencias.empresaGuardada = null
+        runCatching { supabase.auth.signOut() }
+        // Si el aviso al servidor fallo por falta de señal, igual se borra
+        // la sesion guardada en el telefono.
+        runCatching { supabase.auth.clearSession() }
+    }
+
+    /**
+     * Saca al chofer porque lo dieron de baja (a el, o al administrador de
+     * su empresa). Ademas de cerrar sesion, borra la huella de su contraseña:
+     * si no, podria volver a entrar sin señal.
+     */
+    suspend fun expulsar() {
+        Preferencias.perfilGuardado?.usuario?.lowercase()?.let {
+            Preferencias.borrarCredencial(it)
+        }
+        salir()
+    }
 
     /**
      * Cambia la contraseña del chofer logueado y marca en su ficha que ya
@@ -115,6 +316,11 @@ object Sesion {
      */
     suspend fun cambiarPassword(nueva: String): Result<Unit> = runCatching {
         supabase.auth.updateUser { password = nueva }
+
+        // La huella para entrar sin señal pasa a ser la de la nueva.
+        Preferencias.perfilGuardado?.let {
+            recordarIngreso(it.copy(debeCambiarPassword = false), nueva)
+        }
 
         // Apagar el campo debe_cambiar_password. Se intenta primero con la
         // funcion del servidor (ver supabase-marcar-password.sql) y, si no
@@ -189,6 +395,25 @@ private data class MarcaPassword(
 )
 
 /** Traduce los errores de Supabase a algo que entienda un chofer. */
+/**
+ * true si el error es por falta de señal (y no, por ejemplo, una contraseña
+ * incorrecta). Recorre la cadena de causas porque la libreria envuelve los
+ * errores de red en otros.
+ */
+fun esErrorDeRed(e: Throwable): Boolean {
+    var actual: Throwable? = e
+    while (actual != null) {
+        if (actual is java.io.IOException) return true
+        val m = actual.message?.lowercase() ?: ""
+        if ("unable to resolve host" in m || "failed to connect" in m ||
+            "timeout" in m || "timed out" in m || "network is unreachable" in m ||
+            "connection refused" in m || "software caused connection abort" in m
+        ) return true
+        actual = actual.cause
+    }
+    return false
+}
+
 fun mensajeDeError(e: Throwable): String {
     val m = e.message ?: return "No se pudo completar la operación."
     val t = m.lowercase()

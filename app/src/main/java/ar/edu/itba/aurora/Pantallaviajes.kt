@@ -1,5 +1,17 @@
 package ar.edu.itba.aurora
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
@@ -63,6 +75,9 @@ fun PantallaViajes(
     nombreChofer: String = "",
     estadoSync: EstadoSync = EstadoSync.SINCRONIZADO,
     pendientesSync: Int = 0,
+    historialCompleto: Boolean = true,
+    necesitaClave: Boolean = false,
+    onIngresarClave: () -> Unit = {},
     cargando: Boolean = false,
     error: String? = null,
     finalizando: Boolean = false,
@@ -128,6 +143,12 @@ fun PantallaViajes(
             ) {
                 item { CartelSync(estadoSync, pendientesSync) }
 
+                // Hay señal pero falta la contraseña para abrir la sesion y
+                // subir. No bloquea nada: el chofer puede seguir trabajando.
+                if (necesitaClave) {
+                    item { AvisoClave(onIngresarClave) }
+                }
+
                 if (viajeEnCurso != null) {
                     item {
                         TarjetaViajeEnCurso(
@@ -173,7 +194,7 @@ fun PantallaViajes(
                     }
                 }
 
-                if (!cargando && error == null && viajes.isEmpty()) {
+                if (!cargando && error == null && viajes.isEmpty() && historialCompleto) {
                     item {
                         Text(
                             "Todavia no hay viajes registrados. Toca + para iniciar uno.",
@@ -186,6 +207,14 @@ fun PantallaViajes(
 
                 items(viajes) { viaje ->
                     TarjetaViaje(viaje = viaje, onClick = { onAbrirViaje(viaje) })
+                }
+
+                // Sin señal solo estan los viajes guardados en el telefono (los
+                // que no se subieron). El resto del historial esta en la nube,
+                // asi que el aviso va debajo de esos viajes.
+                // Mientras sincroniza no se muestra, para no hacer parpadear.
+                if (!historialCompleto && estadoSync != EstadoSync.SINCRONIZANDO) {
+                    item { AvisoHistorial() }
                 }
             }
         }
@@ -432,7 +461,7 @@ private fun CartelSync(estado: EstadoSync, pendientes: Int) {
         EstadoSync.SINCRONIZADO ->
             "sincronizado" to MaterialTheme.colorScheme.onSurfaceVariant
         EstadoSync.SIN_CONEXION ->
-            (if (pendientes > 0) "sin conexion - $pendientes sin subir" else "sin conexion") to
+            (if (pendientes > 0) "sin conexión - conectate a internet para subir" else "sin conexión") to
                     MaterialTheme.colorScheme.error
     }
 
@@ -455,4 +484,122 @@ private fun CartelSync(estado: EstadoSync, pendientes: Int) {
             modifier = Modifier.padding(start = 8.dp)
         )
     }
+}
+
+/**
+ * Aviso de "sin señal no se puede ver el historial". Mismo formato que el
+ * estado vacio de la web: emoji, titulo en negrita y una linea de texto.
+ */
+@Composable
+private fun AvisoHistorial() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp, bottom = 12.dp)
+    ) {
+        Text("🔌", fontSize = 30.sp)
+        Text(
+            "Historial sin conexión",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp)
+        )
+        Text(
+            "Conectate a internet para ver tus viajes anteriores.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+/** Aviso de "hay señal pero falta la contraseña para subir". */
+@Composable
+private fun AvisoClave(onIngresarClave: () -> Unit) {
+    val forma = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer, forma)
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), forma)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(
+            "Volvió la señal. Para subir tus viajes y ver el historial, " +
+                "escribí tu contraseña.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        TextButton(onClick = onIngresarClave, modifier = Modifier.padding(top = 2.dp)) {
+            Text("Escribir contraseña")
+        }
+    }
+}
+
+/**
+ * Ventana para escribir la contraseña y abrir la sesion con Supabase.
+ * Se puede cerrar sin escribir nada: la app sigue funcionando igual.
+ */
+@Composable
+fun DialogoClave(
+    enviando: Boolean,
+    error: String?,
+    onCancelar: () -> Unit,
+    onConfirmar: (String) -> Unit
+) {
+    var clave by remember { mutableStateOf("") }
+    var verClave by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!enviando) onCancelar() },
+        title = { Text("Tu contraseña") },
+        text = {
+            Column {
+                Text(
+                    "La necesitamos para subir lo que registraste sin señal.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                OutlinedTextField(
+                    value = clave,
+                    onValueChange = { clave = it },
+                    singleLine = true,
+                    enabled = !enviando,
+                    visualTransformation =
+                        if (verClave) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { verClave = !verClave }) {
+                            Icon(
+                                if (verClave) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (verClave) "Ocultar contraseña" else "Ver contraseña"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(
+                        error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirmar(clave) },
+                enabled = !enviando && clave.isNotBlank()
+            ) {
+                Text(if (enviando) "Entrando..." else "Aceptar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancelar, enabled = !enviando) { Text("Más tarde") }
+        }
+    )
 }

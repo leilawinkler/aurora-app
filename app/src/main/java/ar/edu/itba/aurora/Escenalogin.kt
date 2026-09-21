@@ -92,8 +92,8 @@ private val EscenaNoche = ColoresEscena(
         AmbarAurora to 0.42f, CremaLogo to 0.34f
     ),
     destello = Color(0xFFFDFAF6),
-    tarjeta = Color(0xF014172E),
-    bordeTarjeta = Color(0x1FFFFFFF),
+    tarjeta = Color(0x8114172E),
+    bordeTarjeta = Color(0x8114172E),
     texto = Color(0xFFF2EEF4),
     textoSuave = Color(0xFFA7A1BC),
     etiqueta = Color(0xFFCFC8DC),
@@ -110,8 +110,8 @@ private val EscenaDia = ColoresEscena(
         AmbarAurora to 0.30f, Color(0xFFFFB59E) to 0.30f
     ),
     destello = RosaAurora,
-    tarjeta = Color(0xF7FFFBF2),              // la tarjeta crema de la web
-    bordeTarjeta = Color(0x80FFFFFF),
+    tarjeta = Color(0x8BFFFBF2),              // la tarjeta crema de la web
+    bordeTarjeta = Color(0x8BFFFBF2),
     texto = Color(0xFF1C1B2E),
     textoSuave = Color(0xFF8B8499),
     etiqueta = Color(0xFF56526A),
@@ -306,23 +306,23 @@ fun EscenaLogin(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 56.dp),
+                .padding(horizontal = 40.dp, vertical = 56.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             val forma = RoundedCornerShape(20.dp)
             Column(
                 modifier = Modifier
-                    .widthIn(max = 460.dp)
+                    .widthIn(max = 380.dp)
                     .fillMaxWidth()
                     .graphicsLayer {
                         alpha = entrada.value
                         translationY = (1f - entrada.value) * 14.dp.toPx()
                     }
-                    .shadow(24.dp, forma, clip = false)
+//                    .shadow(8.dp, forma, clip = false)
                     .background(c.tarjeta, forma)
                     .border(1.dp, c.bordeTarjeta, forma)
-                    .padding(start = 26.dp, end = 26.dp, top = 34.dp, bottom = 28.dp),
+                    .padding(start = 22.dp, end = 22.dp, top = 26.dp, bottom = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 EncabezadoMarca(temaOscuro)
@@ -355,7 +355,7 @@ private fun EncabezadoMarca(oscuro: Boolean) {
     Box(
         modifier = Modifier
             .padding(bottom = 14.dp)
-            .size(92.dp),
+            .size(72.dp),
         contentAlignment = Alignment.Center
     ) {
         // Resplandor rosa detras del logo (logo-latido de la web, 4.5 s)
@@ -381,18 +381,18 @@ private fun EncabezadoMarca(oscuro: Boolean) {
             contentDescription = "Logo de Aurora",
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .size(82.dp)
+                .size(64.dp)
                 .graphicsLayer { translationX = -3.dp.toPx() }
         )
     }
 
-    Text("aurora", style = Marca, color = c.texto)
+    Text("aurora", style = Marca.copy(fontSize = 26.sp), color = c.texto)
     Text(
         text = "Sistema de detección de somnolencia en conductores",
         style = TextStyle(fontSize = 13.sp),
         color = c.textoSuave,
         textAlign = TextAlign.Center,
-        modifier = Modifier.padding(top = 4.dp, bottom = 26.dp)
+        modifier = Modifier.padding(top = 4.dp, bottom = 18.dp)
     )
 }
 
@@ -418,7 +418,7 @@ fun CampoLogin(
     val enfocado by foco.collectIsFocusedAsState()
     val forma = RoundedCornerShape(9.dp)
 
-    Column(modifier = modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Text(
             etiqueta,
             style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
@@ -450,8 +450,10 @@ fun CampoLogin(
                 disabledTextColor = c.textoSuave,
                 cursorColor = c.campoFoco
             ),
+            textStyle = TextStyle(fontSize = 14.sp, color = c.texto),
             modifier = Modifier
                 .fillMaxWidth()
+                .height(46.dp)
                 // halo rosa al seleccionar, como el box-shadow de la web
                 .then(
                     if (enfocado) Modifier.border(5.dp, c.campoFoco.copy(alpha = 0.18f), forma)
@@ -476,7 +478,7 @@ fun BotonLogin(texto: String, onClick: () -> Unit, habilitado: Boolean = true) {
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(44.dp)
             .padding(top = 2.dp)
     ) {
         Text(texto, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold))

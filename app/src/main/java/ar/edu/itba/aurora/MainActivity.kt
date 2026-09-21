@@ -33,9 +33,14 @@ sealed class Pantalla {
     data object Recuperar : Pantalla()
 }
 
-/** A donde va el chofer despues de entrar: a cambiar la contraseña si es temporal. */
-private fun pantallaAlEntrar(p: Perfil): Pantalla =
-    if (p.debeCambiarPassword) Pantalla.CambiarPassword(obligatorio = true)
+/**
+ * A donde va el chofer despues de entrar: a cambiar la contraseña si es
+ * temporal. Salvo sin señal: ahi no se puede cambiar, y trabarlo en esa
+ * pantalla le impediria iniciar el viaje. Se la pide la proxima vez que
+ * entre con señal.
+ */
+private fun pantallaAlEntrar(p: Perfil, sinConexion: Boolean = false): Pantalla =
+    if (p.debeCambiarPassword && !sinConexion) Pantalla.CambiarPassword(obligatorio = true)
     else Pantalla.Viajes
 
 class MainActivity : ComponentActivity() {
@@ -43,7 +48,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Prende la base de datos local del telefono (Room).
         Local.iniciar(this)
-        // Y lee el modo dia/noche que habia elegido el usuario.
+        // Y lo que quedo guardado: modo dia/noche, quien esta adentro, y las
+        // huellas para entrar sin señal.
         Preferencias.iniciar(this)
         setContent { AppAurora() }
     }
@@ -91,34 +97,37 @@ fun AppAurora() {
     val estadoSync by Sincronizador.estado.collectAsState()
     val pendientes by Sincronizador.pendientes.collectAsState()
     val cambios by Sincronizador.cambios.collectAsState()
+    val necesitaClave by Sincronizador.necesitaClave.collectAsState()
+    var historialCompleto by remember { mutableStateOf(false) }
+    var mostrarDialogoClave by remember { mutableStateOf(false) }
+    var enviandoClave by remember { mutableStateOf(false) }
+    var errorClave by remember { mutableStateOf<String?>(null) }
 
     // El viaje abierto y los ya cerrados salen de la misma lista.
     val viajeEnCurso = viajes.firstOrNull { it.enCurso }
     val viajesAnteriores = viajes.filter { !it.enCurso }
 
-    // Al abrir la app: si ya habia sesion guardada, entra derecho.
+    // Al abrir la app: si el chofer no cerro sesion, entra directo, haya
+    // señal o no. La app nunca lo saca por falta de señal (ver Sesion.alAbrir).
     LaunchedEffect(Unit) {
-        Sesion.esperarInicio()
-        val p = runCatching { Sesion.perfil() }.getOrNull()
-
-        // Aunque la sesion este guardada, si el administrador lo dio de baja
-        // (o desactivaron la empresa) no puede seguir usando la app.
-        val motivo = if (p != null) Sesion.motivoDeBloqueo() else null
-        if (p != null && motivo != null) {
-            Sesion.salir()
-            errorLogin = motivo
-            pantalla = Pantalla.Login
-            return@LaunchedEffect
+        when (val arranque = Sesion.alAbrir()) {
+            is Arranque.Adentro -> {
+                perfil = arranque.perfil
+                pantalla = pantallaAlEntrar(arranque.perfil, arranque.sinConexion)
+            }
+            is Arranque.Afuera -> {
+                errorLogin = arranque.motivo
+                pantalla = Pantalla.Login
+            }
         }
-
-        perfil = p
-        pantalla = if (p != null) pantallaAlEntrar(p) else Pantalla.Login
     }
 
-    // Cerrar sesion: se usa desde Configuracion y desde el cambio obligatorio.
+    // Cerrar sesion: SOLO cuando el chofer toca el boton (Configuracion o el
+    // cambio obligatorio de contraseña). La app nunca lo hace sola. Lo que
+    // no se subio queda en el telefono y se sube la proxima vez que entre.
     val cerrarSesion: () -> Unit = {
         alcance.launch {
-            Almacen.limpiarLoSubido()
+            Almacen.alCerrarSesion()
             Sesion.salir()
         }
         Sincronizador.reiniciar()
@@ -127,6 +136,27 @@ fun AppAurora() {
         empresa = ""
         passwordCambiada = false
         errorPassword = null
+        pantalla = Pantalla.Login
+    }
+
+    // Baja de la cuenta: el administrador dio de baja al chofer, o el
+    // superadmin al administrador de su empresa. Es el unico caso en que la
+    // app saca al chofer sin que el lo pida. Se detecta apenas hay señal
+    // (ver Sincronizador.cuentaBloqueada), incluso en medio de un viaje.
+    val cuentaBloqueada by Sincronizador.cuentaBloqueada.collectAsState()
+    LaunchedEffect(cuentaBloqueada) {
+        val motivo = cuentaBloqueada ?: return@LaunchedEffect
+        Almacen.alCerrarSesion()
+        // Ademas de cerrar sesion, borra la huella para entrar sin señal.
+        Sesion.expulsar()
+        Sincronizador.reiniciar()
+        perfil = null
+        viajes = emptyList()
+        empresa = ""
+        passwordCambiada = false
+        errorPassword = null
+        mostrarDialogoClave = false
+        errorLogin = motivo
         pantalla = Pantalla.Login
     }
 
@@ -139,6 +169,7 @@ fun AppAurora() {
         runCatching { Almacen.viajes(p) }
             .onSuccess { viajes = it }
             .onFailure { errorViajes = mensajeDeError(it) }
+        historialCompleto = Almacen.historialCompleto
         cargandoViajes = false
     }
 
@@ -147,7 +178,12 @@ fun AppAurora() {
     LaunchedEffect(perfil?.id) {
         val p = perfil ?: return@LaunchedEffect
         Sincronizador.arrancar(contexto)
-        empresa = Datos.nombreEmpresa(p) ?: ""
+        empresa = Preferencias.empresaGuardada ?: ""
+        val deLaNube = Datos.nombreEmpresa(p)
+        if (deLaNube != null) {
+            empresa = deLaNube
+            Preferencias.empresaGuardada = deLaNube
+        }
     }
 
     when (val actual = pantalla) {
@@ -177,11 +213,11 @@ fun AppAurora() {
                     errorLogin = null
                     alcance.launch {
                         Sesion.entrar(usuario, clave)
-                            .onSuccess {
-                                perfil = it
+                            .onSuccess { ingreso ->
+                                perfil = ingreso.perfil
                                 passwordCambiada = false
                                 errorPassword = null
-                                pantalla = pantallaAlEntrar(it)
+                                pantalla = pantallaAlEntrar(ingreso.perfil, ingreso.sinConexion)
                             }
                             .onFailure { errorLogin = mensajeDeError(it) }
                         cargandoLogin = false
@@ -255,6 +291,12 @@ fun AppAurora() {
                 nombreChofer = perfil?.nombreCompleto ?: "",
                 estadoSync = estadoSync,
                 pendientesSync = pendientes,
+                historialCompleto = historialCompleto,
+                necesitaClave = necesitaClave,
+                onIngresarClave = {
+                    errorClave = null
+                    mostrarDialogoClave = true
+                },
                 cargando = cargandoViajes,
                 error = errorViajes,
                 finalizando = finalizando,
@@ -278,6 +320,26 @@ fun AppAurora() {
                     }
                 }
             )
+            if (mostrarDialogoClave) {
+                DialogoClave(
+                    enviando = enviandoClave,
+                    error = errorClave,
+                    onCancelar = { mostrarDialogoClave = false },
+                    onConfirmar = { clave ->
+                        enviandoClave = true
+                        errorClave = null
+                        alcance.launch {
+                            Sesion.reingresarClave(clave)
+                                .onSuccess {
+                                    mostrarDialogoClave = false
+                                    Sincronizador.sincronizar()
+                                }
+                                .onFailure { errorClave = mensajeDeError(it) }
+                            enviandoClave = false
+                        }
+                    }
+                )
+            }
         }
 
         is Pantalla.NuevoViaje -> AuroraTheme(oscuro = temaOscuro) {
@@ -286,19 +348,28 @@ fun AppAurora() {
                 guardando = guardandoViaje,
                 error = errorNuevoViaje,
                 onIniciar = { origen, destino ->
-                    val p = perfil ?: return@PantallaNuevoViaje
+                    val p = perfil
+                    if (p == null) {
+                        errorNuevoViaje = "No se pudo identificar al chofer. Cerrá y abrí la app."
+                        return@PantallaNuevoViaje
+                    }
                     guardandoViaje = true
                     errorNuevoViaje = null
                     alcance.launch {
-                        Almacen.iniciarViaje(p, origen, destino)
-                            .onSuccess {
-                                pantalla = Pantalla.Viajes
-                                // Si hay senal, el viaje aparece enseguida en
-                                // la web del admin; si no, queda pendiente.
-                                Sincronizador.huboNovedades()
-                            }
-                            .onFailure { errorNuevoViaje = mensajeDeError(it) }
-                        guardandoViaje = false
+                        // Solo escribe en el telefono: no necesita señal.
+                        try {
+                            Almacen.iniciarViaje(p, origen, destino)
+                                .onSuccess {
+                                    pantalla = Pantalla.Viajes
+                                    // Si hay señal, el viaje aparece enseguida en
+                                    // la web del admin; si no, queda pendiente.
+                                    Sincronizador.huboNovedades()
+                                }
+                                .onFailure { errorNuevoViaje = mensajeDeError(it) }
+                        } finally {
+                            // Pase lo que pase, el boton vuelve a estar disponible.
+                            guardandoViaje = false
+                        }
                     }
                 }
             )
