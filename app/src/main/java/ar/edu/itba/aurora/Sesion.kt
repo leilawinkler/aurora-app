@@ -51,13 +51,45 @@ object Sesion {
         val p = perfil()
         if (p == null) {
             supabase.auth.signOut()
-            error("Tu usuario no tiene ficha cargada en el sistema.")
+            error("El usuario no tiene ficha cargada en el sistema.")
         }
+
+        // Mismo orden que la web: ficha -> cuenta habilitada -> rol.
+        val motivo = motivoDeBloqueo()
+        if (motivo != null) {
+            supabase.auth.signOut()
+            error(motivo)
+        }
+
         if (p.rol != "chofer") {
             supabase.auth.signOut()
-            error("Este usuario no es conductor. La app es solo para conductores.")
+            error("Esta app es solo para conductores. Ingresá desde la web.")
         }
         p
+    }
+
+    /**
+     * Pregunta a la base si la cuenta sigue habilitada. Es la misma funcion
+     * que usa la web ("cuenta_habilitada"): la decide el servidor porque el
+     * telefono no puede ver, por ejemplo, si el administrador de la empresa
+     * fue dado de baja.
+     *
+     * Devuelve el texto para mostrarle al chofer si NO puede entrar, o null
+     * si esta todo bien. Si no se pudo consultar (sin señal), devuelve null:
+     * igual que la web, no se bloquea a nadie por un problema de conexion.
+     */
+    suspend fun motivoDeBloqueo(): String? {
+        val estado = runCatching {
+            supabase.postgrest.rpc("cuenta_habilitada").data.trim().trim('"')
+        }.getOrNull() ?: return null
+
+        return when (estado) {
+            "activa", "" -> null
+            "usuario_inactivo" -> "Tu cuenta se encuentra desactivada. Comunicate con tu administrador."
+            "empresa_inactiva", "empresa_sin_admin" -> "La cuenta de tu empresa se encuentra desactivada."
+            "sin_ficha" -> "El usuario no tiene ficha cargada en el sistema."
+            else -> "No podés ingresar en este momento."
+        }
     }
 
     /** Ficha del usuario logueado, o null si no hay sesion. */
@@ -158,15 +190,19 @@ private data class MarcaPassword(
 
 /** Traduce los errores de Supabase a algo que entienda un chofer. */
 fun mensajeDeError(e: Throwable): String {
-    val m = e.message ?: return "No se pudo ingresar."
+    val m = e.message ?: return "No se pudo completar la operación."
+    val t = m.lowercase()
     return when {
-        m.contains("Invalid login credentials", true) -> "Usuario o contraseña incorrectos."
-        m.contains("at least", true) -> "La contraseña es muy corta (minimo 6 caracteres)."
-        m.contains("should be different", true) -> "La contraseña nueva tiene que ser distinta a la actual."
-        m.contains("Email not confirmed", true) -> "El usuario todavia no esta habilitado."
-        m.contains("Unable to resolve host", true) ||
-                m.contains("failed to connect", true) ||
-                m.contains("timeout", true) -> "Sin conexion a internet."
+        t.contains("invalid login credentials") -> "Usuario o contraseña incorrecta"
+        t.contains("at least") -> "La contraseña es muy corta (mínimo 6 caracteres)."
+        t.contains("should be different") -> "La contraseña nueva tiene que ser distinta a la actual."
+        t.contains("email not confirmed") -> "El usuario todavía no está habilitado."
+        t.contains("unable to resolve host") || t.contains("failed to connect") ||
+            t.contains("timeout") || t.contains("network") ->
+            "No hay conexión. Probá de nuevo en un rato."
+        t.contains("permission") || t.contains("policy") || t.contains("row-level") ->
+            "No tenés permiso para hacer esa operación."
+        t.contains("jwt") || t.contains("401") -> "La sesión expiró, volvé a entrar."
         else -> m
     }
 }

@@ -1,5 +1,8 @@
 package ar.edu.itba.aurora
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.foundation.layout.Arrangement
@@ -67,7 +70,10 @@ fun PantallaViajes(
     onSimularEvento: (String, Int) -> Unit = { _, _ -> }
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .rastroAurora(temaOscuro),
+        containerColor = Color.Transparent,
         bottomBar = {
             BarraInferior(
                 seleccion = 0,
@@ -197,7 +203,9 @@ private fun TarjetaViajeEnCurso(
     Card(
         onClick = onAbrir,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+        shape = RoundedCornerShape(18.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -308,7 +316,9 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -318,25 +328,27 @@ private fun TarjetaViaje(viaje: Viaje, onClick: () -> Unit) {
                     .background(colorDeNivel(viaje.nivelMaximo))
             )
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                Row(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         "${viaje.origen} ➜ ${viaje.destino}",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
-                    Text(
-                        viaje.fecha,
-                        style = EtiquetaMono,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            viaje.fecha,
+                            style = EtiquetaMono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            viaje.duracion,
+                            style = DatoMono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
-                Text(
-                    "${viaje.duracion} - ${viaje.eventos.size} eventos - max N${viaje.nivelMaximo}",
-                    style = DatoMono,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
                 if (!viaje.sincronizado) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

@@ -43,6 +43,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Prende la base de datos local del telefono (Room).
         Local.iniciar(this)
+        // Y lee el modo dia/noche que habia elegido el usuario.
+        Preferencias.iniciar(this)
         setContent { AppAurora() }
     }
 }
@@ -53,7 +55,14 @@ fun AppAurora() {
     val alcance = rememberCoroutineScope()
 
     // --- Estado general ---
-    var temaOscuro by remember { mutableStateOf(true) }
+    // Arranca con lo ultimo que eligio el usuario, no con un valor fijo.
+    var temaOscuro by remember { mutableStateOf(Preferencias.temaOscuro) }
+
+    // Cambiar el tema siempre pasa por aca, asi queda guardado en el telefono.
+    val cambiarTema: (Boolean) -> Unit = {
+        temaOscuro = it
+        Preferencias.temaOscuro = it
+    }
     var pantalla by remember { mutableStateOf<Pantalla>(Pantalla.Cargando) }
     var perfil by remember { mutableStateOf<Perfil?>(null) }
     var empresa by remember { mutableStateOf("") }
@@ -91,6 +100,17 @@ fun AppAurora() {
     LaunchedEffect(Unit) {
         Sesion.esperarInicio()
         val p = runCatching { Sesion.perfil() }.getOrNull()
+
+        // Aunque la sesion este guardada, si el administrador lo dio de baja
+        // (o desactivaron la empresa) no puede seguir usando la app.
+        val motivo = if (p != null) Sesion.motivoDeBloqueo() else null
+        if (p != null && motivo != null) {
+            Sesion.salir()
+            errorLogin = motivo
+            pantalla = Pantalla.Login
+            return@LaunchedEffect
+        }
+
         perfil = p
         pantalla = if (p != null) pantallaAlEntrar(p) else Pantalla.Login
     }
@@ -132,19 +152,17 @@ fun AppAurora() {
 
     when (val actual = pantalla) {
 
-        is Pantalla.Cargando -> AuroraTheme(oscuro = true) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+        is Pantalla.Cargando -> AuroraTheme(oscuro = temaOscuro) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                FondoAurora(oscuro = temaOscuro)
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         }
 
-        is Pantalla.Login -> AuroraTheme(oscuro = true) {
+        is Pantalla.Login -> AuroraTheme(oscuro = temaOscuro) {
             PantallaLogin(
+                temaOscuro = temaOscuro,
+                onCambiarTema = cambiarTema,
                 cargando = cargandoLogin,
                 error = errorLogin,
                 onOlvide = {
@@ -172,8 +190,10 @@ fun AppAurora() {
             )
         }
 
-        is Pantalla.Recuperar -> AuroraTheme(oscuro = true) {
+        is Pantalla.Recuperar -> AuroraTheme(oscuro = temaOscuro) {
             PantallaRecuperar(
+                temaOscuro = temaOscuro,
+                onCambiarTema = cambiarTema,
                 usuarioInicial = usuarioEscrito,
                 cargando = enviandoRecuperar,
                 mensajeOk = mensajeRecuperar,
@@ -225,7 +245,7 @@ fun AppAurora() {
                 viajeEnCurso = viajeEnCurso,
                 viajes = viajesAnteriores,
                 temaOscuro = temaOscuro,
-                onCambiarTema = { temaOscuro = it },
+                onCambiarTema = cambiarTema,
                 onNuevoViaje = {
                     errorNuevoViaje = null
                     pantalla = Pantalla.NuevoViaje
@@ -294,7 +314,7 @@ fun AppAurora() {
         is Pantalla.Configuracion -> AuroraTheme(oscuro = temaOscuro) {
             PantallaConfiguracion(
                 temaOscuro = temaOscuro,
-                onCambiarTema = { temaOscuro = it },
+                onCambiarTema = cambiarTema,
                 onIrAViajes = { pantalla = Pantalla.Viajes },
                 estadoSync = estadoSync,
                 pendientes = pendientes,

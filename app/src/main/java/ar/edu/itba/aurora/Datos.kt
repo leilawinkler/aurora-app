@@ -189,11 +189,13 @@ fun armarViaje(viaje: ViajeLocal, eventos: List<EventoLocal>): Viaje {
         horario = horaDelDia(viaje.inicioMs) + " -> " +
                 if (enCurso) "en curso" else horaDelDia(viaje.finMs ?: hasta),
         inicioMs = viaje.inicioMs,
+        finMs = viaje.finMs,
         eventos = ordenados.map {
             Evento(
                 hora = horaDelDia(it.ocurridoEnMs),
                 tipo = nombreTipo(it.tipo),
-                nivel = it.nivel
+                nivel = it.nivel,
+                momentoMs = it.ocurridoEnMs
             )
         },
         enCurso = enCurso,

@@ -1,5 +1,8 @@
 package ar.edu.itba.aurora
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,7 +43,10 @@ fun PantallaConfiguracion(
     pendientes: Int = 0
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .rastroAurora(temaOscuro),
+        containerColor = Color.Transparent,
         bottomBar = {
             BarraInferior(seleccion = 1, onViajes = onIrAViajes, onConfiguracion = {})
         }
@@ -52,8 +58,8 @@ fun PantallaConfiguracion(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                "Configuracion",
-                style = MaterialTheme.typography.headlineSmall,
+                "Configuración",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 18.dp)
             )

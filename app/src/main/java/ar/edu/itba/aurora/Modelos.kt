@@ -3,7 +3,9 @@ package ar.edu.itba.aurora
 data class Evento(
     val hora: String,
     val tipo: String,
-    val nivel: Int
+    val nivel: Int,
+    // Momento exacto del evento, para ubicarlo en el grafico del viaje.
+    val momentoMs: Long = 0L
 )
 
 data class Viaje(
@@ -16,6 +18,8 @@ data class Viaje(
     val eventos: List<Evento>,
     // Momento de arranque del viaje, para el cronometro en vivo.
     val inicioMs: Long? = null,
+    // Momento de cierre; null mientras el viaje sigue abierto.
+    val finMs: Long? = null,
     val enCurso: Boolean = false,
     val sincronizado: Boolean = true,
     val eventosPorHora: List<Int> = emptyList(),
