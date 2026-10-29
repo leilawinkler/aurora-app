@@ -98,16 +98,8 @@ fun PantallaConfiguracion(
 
             // Dispositivo
             Seccion("dispositivo") {
-                FilaDato("Vinculado", "AURORA-01")
-                FilaDato("Bateria", "78 %")
-                OutlinedButton(
-                    onClick = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 14.dp)
-                ) {
-                    Text("Vincular")
-                }
+                // Vincular / desvincular la vincha por Bluetooth (Tarjetavincha.kt)
+                ControlVincha()
             }
 
             // Calibración

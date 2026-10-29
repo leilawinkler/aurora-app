@@ -35,6 +35,11 @@ object Sincronizador {
     private val _estado = MutableStateFlow(EstadoSync.SINCRONIZADO)
     val estado: StateFlow<EstadoSync> = _estado
 
+    // Si el telefono tiene internet de verdad (red "validada" por Android).
+    // Lo muestra el renglon de estado de la pantalla principal.
+    private val _hayInternet = MutableStateFlow(true)
+    val hayInternet: StateFlow<Boolean> = _hayInternet
+
     private val _pendientes = MutableStateFlow(0)
     val pendientes: StateFlow<Int> = _pendientes
 
@@ -66,6 +71,7 @@ object Sincronizador {
     /** Se llama una vez, cuando el chofer ya esta adentro. */
     fun arrancar(contexto: Context) {
         contextoApp = contexto.applicationContext
+        _hayInternet.value = hayInternetConfirmado()
         sincronizar()
         if (vigilando) return
         vigilando = true
@@ -82,7 +88,13 @@ object Sincronizador {
                         sincronizar()
                     }
 
+                    override fun onCapabilitiesChanged(network: Network, capacidades: NetworkCapabilities) {
+                        _hayInternet.value =
+                            capacidades.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    }
+
                     override fun onLost(network: Network) {
+                        _hayInternet.value = false
                         if (_pendientes.value > 0) {
                             _estado.value = EstadoSync.SIN_CONEXION
                         }
@@ -92,10 +104,12 @@ object Sincronizador {
         }
 
         // 2) Red de seguridad: reintento cada minuto mientras falte subir algo.
+        //    Ademas, cada minuto, el latido del viaje en curso para la web.
         alcance.launch {
             while (true) {
                 delay(60_000)
                 if (_pendientes.value > 0) sincronizar() else revisarCuenta()
+                latir()
             }
         }
     }
@@ -143,6 +157,9 @@ object Sincronizador {
         val resultado = Almacen.sincronizar()
         _pendientes.value = runCatching { Almacen.pendientes() }.getOrDefault(0)
 
+        // Recien subido un viaje nuevo: que la web vea el estado enseguida.
+        if (resultado.isSuccess) latidoAhora()
+
         _estado.value = if (resultado.isSuccess) {
             EstadoSync.SINCRONIZADO
         } else {
@@ -164,6 +181,27 @@ object Sincronizador {
             if (!Sesion.reconectar()) return@launch
             val motivo = Sesion.motivoDeBloqueo()
             if (motivo != null) _cuentaBloqueada.value = motivo
+        }
+    }
+
+    /**
+     * Manda el latido del viaje en curso: "el telefono tiene señal, y la
+     * vincha esta (o no) conectada". Sin viaje en curso o sin señal no hace
+     * nada: justamente, que no llegue es lo que la web interpreta como
+     * "se perdio la conexion".
+     * Se llama cada minuto y cuando la vincha se conecta o se desconecta.
+     */
+    fun latir() {
+        alcance.launch { latidoAhora() }
+    }
+
+    private suspend fun latidoAhora() {
+        val perfil = Preferencias.perfilGuardado ?: return
+        val viaje = runCatching { Almacen.viajeEnCurso(perfil.id) }.getOrNull() ?: return
+        if (!hayInternetConfirmado()) return
+        if (!Sesion.reconectar()) return
+        runCatching {
+            Datos.latido(viaje.id, Vincha.estado.value == EstadoVincha.CONECTADA)
         }
     }
 

@@ -44,6 +44,13 @@ data class EventoFila(
 @Serializable
 private data class EmpresaFila(val nombre: String)
 
+/** Lo que manda el "latido" del viaje en curso (ver Datos.latido). */
+@Serializable
+private data class LatidoFila(
+    @SerialName("ultimo_contacto") val ultimoContacto: String,
+    @SerialName("vincha_conectada") val vinchaConectada: Boolean
+)
+
 // ============================================================================
 // Subidas y bajadas contra Supabase
 // ============================================================================
@@ -93,6 +100,21 @@ object Datos {
             }
             .decodeList<EventoFila>()
             .map { it.aLocal() }
+
+    /**
+     * "Latido" del viaje en curso: le avisa a la web que el telefono sigue
+     * con señal y si la vincha esta conectada. Lo manda el Sincronizador
+     * cada minuto. Si el latido deja de llegar, la web muestra que se perdio
+     * la conexion (ver estadoConexion en web.js).
+     * Necesita las columnas ultimo_contacto y vincha_conectada en viajes.
+     */
+    suspend fun latido(idViaje: String, vinchaConectada: Boolean) {
+        supabase.from("viajes").update(
+            LatidoFila(aTexto(System.currentTimeMillis()), vinchaConectada)
+        ) {
+            filter { eq("id", idViaje) }
+        }
+    }
 
     /** Nombre de la empresa del chofer. Devuelve null si no se puede leer. */
     suspend fun nombreEmpresa(perfil: Perfil): String? {

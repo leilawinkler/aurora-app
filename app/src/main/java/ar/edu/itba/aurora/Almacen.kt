@@ -55,6 +55,10 @@ object Almacen {
             .map { it.second }
     }
 
+    /** El viaje abierto de este chofer guardado en el telefono, si hay. */
+    suspend fun viajeEnCurso(idChofer: String): ViajeLocal? =
+        Local.dao.viajesDe(idChofer).firstOrNull { it.estado == "en_curso" }
+
     /** Cuantas cosas hay guardadas en el telefono sin subir todavia. */
     suspend fun pendientes(): Int = Local.dao.cuantosPendientes()
 
@@ -101,8 +105,8 @@ object Almacen {
     /**
      * Guarda un evento de somnolencia.
      *
-     * Hoy lo llama el boton simulador; cuando este el ESP32, lo va a llamar
-     * el receptor de Bluetooth con exactamente los mismos datos.
+     * Lo llama MainActivity cuando la vincha manda un parpadeo lento por
+     * Bluetooth. Cuando la vincha detecte cabeceos (IMU), van por aca tambien.
      */
     suspend fun registrarEvento(
         perfil: Perfil,

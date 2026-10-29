@@ -51,6 +51,8 @@ class MainActivity : ComponentActivity() {
         // Y lo que quedo guardado: modo dia/noche, quien esta adentro, y las
         // huellas para entrar sin señal.
         Preferencias.iniciar(this)
+        // Si la vincha habia quedado vinculada, se reconecta sola.
+        Vincha.iniciar(this)
         setContent { AppAurora() }
     }
 }
@@ -107,6 +109,48 @@ fun AppAurora() {
     val viajeEnCurso = viajes.firstOrNull { it.enCurso }
     val viajesAnteriores = viajes.filter { !it.enCurso }
 
+    // --- Vincha (Bluetooth) ---
+    val estadoVincha by Vincha.estado.collectAsState()
+    val vinchaVinculada by Vincha.vinculada.collectAsState()
+    val bluetoothActivo by Vincha.bluetoothActivo.collectAsState()
+    val hayInternet by Sincronizador.hayInternet.collectAsState()
+    var parpadeosViaje by remember { mutableStateOf(0) }
+    var ultimoParpadeo by remember { mutableStateOf<Parpadeo?>(null) }
+
+    // Mientras hay un viaje en curso, escucha los parpadeos de la vincha.
+    // Todos se cuentan en pantalla; los LENTOS se guardan como evento
+    // "parpadeo_lento" (nivel 1, valor = duracion en ms). El evento va primero
+    // al telefono (Room) y el sincronizador lo sube a la web cuando hay señal.
+    val idViajeEnCurso = viajeEnCurso?.id
+    LaunchedEffect(perfil?.id, idViajeEnCurso) {
+        parpadeosViaje = 0
+        ultimoParpadeo = null
+        val p = perfil ?: return@LaunchedEffect
+        val idViaje = idViajeEnCurso ?: return@LaunchedEffect
+        Vincha.parpadeos.collect { parpadeo ->
+            parpadeosViaje++
+            ultimoParpadeo = parpadeo
+            if (parpadeo.lento) {
+                Almacen.registrarEvento(
+                    perfil = p,
+                    idViaje = idViaje,
+                    tipo = "parpadeo_lento",
+                    nivel = 1,
+                    valor = parpadeo.duracionMs.toDouble(),
+                    ocurridoEnMs = parpadeo.recibidoEnMs
+                )
+                Sincronizador.huboNovedades()
+            }
+        }
+    }
+
+    // Si la vincha se conecta o se desconecta durante un viaje, la web se
+    // entera enseguida (sin esperar el latido de cada minuto).
+    val vinchaConectada = estadoVincha == EstadoVincha.CONECTADA
+    LaunchedEffect(vinchaConectada, idViajeEnCurso) {
+        if (idViajeEnCurso != null) Sincronizador.latir()
+    }
+
     // Al abrir la app: si el chofer no cerro sesion, entra directo, haya
     // señal o no. La app nunca lo saca por falta de señal (ver Sesion.alAbrir).
     LaunchedEffect(Unit) {
@@ -130,6 +174,7 @@ fun AppAurora() {
             Almacen.alCerrarSesion()
             Sesion.salir()
         }
+        Vincha.desvincular()
         Sincronizador.reiniciar()
         perfil = null
         viajes = emptyList()
@@ -149,6 +194,7 @@ fun AppAurora() {
         Almacen.alCerrarSesion()
         // Ademas de cerrar sesion, borra la huella para entrar sin señal.
         Sesion.expulsar()
+        Vincha.desvincular()
         Sincronizador.reiniciar()
         perfil = null
         viajes = emptyList()
@@ -291,6 +337,10 @@ fun AppAurora() {
                 nombreChofer = perfil?.nombreCompleto ?: "",
                 estadoSync = estadoSync,
                 pendientesSync = pendientes,
+                hayInternet = hayInternet,
+                estadoVincha = estadoVincha,
+                vinchaVinculada = vinchaVinculada,
+                bluetoothActivo = bluetoothActivo,
                 historialCompleto = historialCompleto,
                 necesitaClave = necesitaClave,
                 onIngresarClave = {
@@ -300,14 +350,9 @@ fun AppAurora() {
                 cargando = cargandoViajes,
                 error = errorViajes,
                 finalizando = finalizando,
-                onSimularEvento = { tipo, nivel ->
-                    val p = perfil ?: return@PantallaViajes
-                    val abierto = viajeEnCurso ?: return@PantallaViajes
-                    alcance.launch {
-                        Almacen.registrarEvento(p, abierto.id, tipo, nivel)
-                        Sincronizador.huboNovedades()
-                    }
-                },
+                parpadeosViaje = parpadeosViaje,
+                ultimoParpadeo = ultimoParpadeo,
+                vinchaConectada = vinchaConectada,
                 onFinalizarViaje = {
                     val abierto = viajeEnCurso ?: return@PantallaViajes
                     finalizando = true

@@ -2,6 +2,7 @@ package ar.edu.itba.aurora
 
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -46,7 +47,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -75,6 +75,10 @@ fun PantallaViajes(
     nombreChofer: String = "",
     estadoSync: EstadoSync = EstadoSync.SINCRONIZADO,
     pendientesSync: Int = 0,
+    hayInternet: Boolean = true,
+    estadoVincha: EstadoVincha = EstadoVincha.DESCONECTADA,
+    vinchaVinculada: Boolean = false,
+    bluetoothActivo: Boolean = true,
     historialCompleto: Boolean = true,
     necesitaClave: Boolean = false,
     onIngresarClave: () -> Unit = {},
@@ -82,7 +86,10 @@ fun PantallaViajes(
     error: String? = null,
     finalizando: Boolean = false,
     onFinalizarViaje: () -> Unit = {},
-    onSimularEvento: (String, Int) -> Unit = { _, _ -> }
+    // Lo que llega de la vincha durante el viaje en curso
+    parpadeosViaje: Int = 0,
+    ultimoParpadeo: Parpadeo? = null,
+    vinchaConectada: Boolean = false
 ) {
     Scaffold(
         modifier = Modifier
@@ -141,7 +148,12 @@ fun PantallaViajes(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item { CartelSync(estadoSync, pendientesSync) }
+                item {
+                    RenglonEstado(
+                        estadoSync, hayInternet,
+                        estadoVincha, vinchaVinculada, bluetoothActivo
+                    )
+                }
 
                 // Hay señal pero falta la contraseña para abrir la sesion y
                 // subir. No bloquea nada: el chofer puede seguir trabajando.
@@ -156,7 +168,9 @@ fun PantallaViajes(
                             finalizando = finalizando,
                             onFinalizar = onFinalizarViaje,
                             onAbrir = { onAbrirViaje(viajeEnCurso) },
-                            onSimularEvento = onSimularEvento
+                            parpadeos = parpadeosViaje,
+                            ultimoParpadeo = ultimoParpadeo,
+                            vinchaConectada = vinchaConectada
                         )
                     }
                 }
@@ -227,7 +241,9 @@ private fun TarjetaViajeEnCurso(
     finalizando: Boolean,
     onFinalizar: () -> Unit,
     onAbrir: () -> Unit,
-    onSimularEvento: (String, Int) -> Unit
+    parpadeos: Int,
+    ultimoParpadeo: Parpadeo?,
+    vinchaConectada: Boolean
 ) {
     Card(
         onClick = onAbrir,
@@ -299,32 +315,8 @@ private fun TarjetaViajeEnCurso(
                     }
                 }
 
-                // --- Simulador: ocupa el lugar del ESP32 hasta que este ---
-                Text(
-                    "simulador (prueba)",
-                    style = EtiquetaMono,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 20.dp)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { onSimularEvento("parpadeo_lento", 1) },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Parpadeo")
-                    }
-                    OutlinedButton(
-                        onClick = { onSimularEvento("cabeceo", 2) },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cabeceo")
-                    }
-                }
+                // --- Parpadeos en vivo, desde la vincha ---
+                FilaParpadeos(parpadeos, ultimoParpadeo, vinchaConectada)
 
                 Button(
                     onClick = onFinalizar,
@@ -434,6 +426,83 @@ fun BarraInferior(
 }
 
 /**
+ * Parpadeos del viaje en curso: cuantos llegaron de la vincha y como fue el
+ * ultimo. El punto se prende un instante con cada parpadeo, para ver en el
+ * momento que la vincha los esta detectando.
+ * Solo los parpadeos lentos se guardan como eventos (ver MainActivity).
+ */
+@Composable
+private fun FilaParpadeos(cantidad: Int, ultimo: Parpadeo?, conectada: Boolean) {
+    var encendido by remember { mutableStateOf(false) }
+    LaunchedEffect(ultimo) {
+        if (ultimo == null) return@LaunchedEffect
+        encendido = true
+        delay(350)
+        encendido = false
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "parpadeos",
+                    style = EtiquetaMono,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (encendido) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.outline
+                        )
+                )
+            }
+            Text(
+                cantidad.toString(),
+                style = NumeroMediano,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "último",
+                style = EtiquetaMono,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                when {
+                    ultimo == null -> "-"
+                    ultimo.lento -> "${ultimo.duracionMs} ms · lento"
+                    else -> "${ultimo.duracionMs} ms"
+                },
+                style = DatoMono,
+                color = if (ultimo?.lento == true) colorDeNivel(1) else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+    }
+
+    if (!conectada) {
+        Text(
+            "La vincha no está conectada: no se están registrando parpadeos. " +
+                    "Vinculala desde Configuración.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+/**
  * Devuelve la hora actual (en milisegundos) y se refresca cada segundo,
  * asi el cronometro del viaje en curso avanza a la vista.
  */
@@ -450,19 +519,35 @@ private fun ahoraQueLate(): Long {
 }
 
 /**
- * Cartel de estado de la sincronizacion. El chofer no tiene que hacer nada
- * con el: solo le dice como estan las cosas.
+ * Renglon de estado: a la izquierda internet / sincronizacion, a la derecha
+ * la vincha (Bluetooth). El chofer no tiene que hacer nada con el: solo le
+ * dice como estan las cosas.
  */
 @Composable
-private fun CartelSync(estado: EstadoSync, pendientes: Int) {
-    val (texto, color) = when (estado) {
-        EstadoSync.SINCRONIZANDO ->
+private fun RenglonEstado(
+    estadoSync: EstadoSync,
+    hayInternet: Boolean,
+    estadoVincha: EstadoVincha,
+    vinculada: Boolean,
+    bluetoothActivo: Boolean
+) {
+    val (textoSync, colorSync) = when {
+        estadoSync == EstadoSync.SINCRONIZANDO ->
             "sincronizando..." to MaterialTheme.colorScheme.secondary
-        EstadoSync.SINCRONIZADO ->
+        !hayInternet || estadoSync == EstadoSync.SIN_CONEXION ->
+            "sin internet" to MaterialTheme.colorScheme.error
+        else ->
             "sincronizado" to MaterialTheme.colorScheme.onSurfaceVariant
-        EstadoSync.SIN_CONEXION ->
-            (if (pendientes > 0) "sin conexión - conectate a internet para subir" else "sin conexión") to
-                    MaterialTheme.colorScheme.error
+    }
+
+    val (textoVincha, colorVincha) = when {
+        !bluetoothActivo -> "bluetooth apagado" to MaterialTheme.colorScheme.error
+        !vinculada -> "vincha sin vincular" to MaterialTheme.colorScheme.onSurfaceVariant
+        estadoVincha == EstadoVincha.CONECTADA ->
+            "vincha conectada" to MaterialTheme.colorScheme.secondary
+        estadoVincha == EstadoVincha.DESCONECTADA ->
+            "vincha desconectada" to MaterialTheme.colorScheme.error
+        else -> "buscando vincha..." to MaterialTheme.colorScheme.primary
     }
 
     Row(
@@ -471,6 +556,21 @@ private fun CartelSync(estado: EstadoSync, pendientes: Int) {
             .padding(bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // En pantallas angostas, si no entra, se corta con "..." en vez de romper la fila
+        PuntoYTexto(textoSync, colorSync, Modifier.weight(1f, fill = false))
+        Text(
+            "|",
+            style = EtiquetaMono,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.padding(horizontal = 10.dp)
+        )
+        PuntoYTexto(textoVincha, colorVincha, Modifier.weight(1f, fill = false))
+    }
+}
+
+@Composable
+private fun PuntoYTexto(texto: String, color: Color, modifier: Modifier = Modifier) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         Box(
             modifier = Modifier
                 .size(7.dp)
@@ -481,6 +581,8 @@ private fun CartelSync(estado: EstadoSync, pendientes: Int) {
             texto,
             style = EtiquetaMono,
             color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 8.dp)
         )
     }
@@ -529,7 +631,7 @@ private fun AvisoClave(onIngresarClave: () -> Unit) {
     ) {
         Text(
             "Volvió la señal. Para subir tus viajes y ver el historial, " +
-                "escribí tu contraseña.",
+                    "escribí tu contraseña.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )

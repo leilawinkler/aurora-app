@@ -36,6 +36,7 @@ object Preferencias {
     private const val PERFIL = "perfil_chofer"
     private const val EMPRESA = "nombre_empresa"
     private const val CREDENCIALES = "credenciales_sin_senal"
+    private const val VINCHA_VINCULADA = "vincha_vinculada"
 
     private var prefs: SharedPreferences? = null
     private val json = Json { ignoreUnknownKeys = true }
@@ -68,6 +69,16 @@ object Preferencias {
             if (valor == null) editor.remove(PERFIL)
             else editor.putString(PERFIL, json.encodeToString(Perfil.serializer(), valor))
             editor.apply()
+        }
+
+    /**
+     * true desde que el chofer vincula la vincha hasta que toca "Desvincular"
+     * o cierra sesion. Mientras sea true, la app se reconecta sola al abrirse.
+     */
+    var vinchaVinculada: Boolean
+        get() = prefs?.getBoolean(VINCHA_VINCULADA, false) ?: false
+        set(valor) {
+            prefs?.edit()?.putBoolean(VINCHA_VINCULADA, valor)?.apply()
         }
 
     /** Nombre de la empresa, para mostrarlo en Configuracion aun sin señal. */
