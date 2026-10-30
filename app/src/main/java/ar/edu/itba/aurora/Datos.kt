@@ -217,7 +217,8 @@ fun armarViaje(viaje: ViajeLocal, eventos: List<EventoLocal>): Viaje {
                 hora = horaDelDia(it.ocurridoEnMs),
                 tipo = nombreTipo(it.tipo),
                 nivel = it.nivel,
-                momentoMs = it.ocurridoEnMs
+                momentoMs = it.ocurridoEnMs,
+                valor = it.valor
             )
         },
         enCurso = enCurso,

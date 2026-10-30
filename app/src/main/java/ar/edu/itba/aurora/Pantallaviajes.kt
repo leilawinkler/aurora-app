@@ -316,7 +316,20 @@ private fun TarjetaViajeEnCurso(
                 }
 
                 // --- Parpadeos en vivo, desde la vincha ---
-                FilaParpadeos(parpadeos, ultimoParpadeo, vinchaConectada)
+                FilaParpadeos(parpadeos, ultimoParpadeo)
+
+                // --- Cabeceos: salen de los eventos guardados del viaje ---
+                FilaCabeceos(viaje.eventos)
+
+                if (!vinchaConectada) {
+                    Text(
+                        "La vincha no está conectada: no se están registrando parpadeos " +
+                                "ni cabeceos. Vinculala desde Configuración.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
 
                 Button(
                     onClick = onFinalizar,
@@ -432,7 +445,7 @@ fun BarraInferior(
  * Solo los parpadeos lentos se guardan como eventos (ver MainActivity).
  */
 @Composable
-private fun FilaParpadeos(cantidad: Int, ultimo: Parpadeo?, conectada: Boolean) {
+private fun FilaParpadeos(cantidad: Int, ultimo: Parpadeo?) {
     var encendido by remember { mutableStateOf(false) }
     LaunchedEffect(ultimo) {
         if (ultimo == null) return@LaunchedEffect
@@ -490,15 +503,52 @@ private fun FilaParpadeos(cantidad: Int, ultimo: Parpadeo?, conectada: Boolean) 
             )
         }
     }
+}
 
-    if (!conectada) {
-        Text(
-            "La vincha no está conectada: no se están registrando parpadeos. " +
-                    "Vinculala desde Configuración.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+/**
+ * Cabeceos del viaje en curso. A diferencia de los parpadeos, todos los
+ * cabeceos se guardan como evento, asi que se cuentan desde los eventos del
+ * viaje (no se pierden si se cierra la app). Muestra los grados del ultimo
+ * para poder ajustar el detector en las pruebas.
+ */
+@Composable
+private fun FilaCabeceos(eventos: List<Evento>) {
+    val cabeceos = eventos.filter { it.tipo == "Cabeceo" }
+    val ultimo = cabeceos.maxByOrNull { it.momentoMs }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column {
+            Text(
+                "cabeceos",
+                style = EtiquetaMono,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                cabeceos.size.toString(),
+                style = NumeroMediano,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "último",
+                style = EtiquetaMono,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                if (ultimo == null) "-"
+                else "${ultimo.valorTexto ?: "-"} · ${ultimo.hora}",
+                style = DatoMono,
+                color = if (ultimo != null) colorDeNivel(2) else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
     }
 }
 

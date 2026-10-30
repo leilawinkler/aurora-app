@@ -5,8 +5,16 @@ data class Evento(
     val tipo: String,
     val nivel: Int,
     // Momento exacto del evento, para ubicarlo en el grafico del viaje.
-    val momentoMs: Long = 0L
-)
+    val momentoMs: Long = 0L,
+    // Parpadeo lento: duracion en ms. Cabeceo: grados hacia adelante.
+    val valor: Double? = null
+) {
+    /** El valor con su unidad, para mostrar: "620 ms" o "18°". */
+    val valorTexto: String?
+        get() = valor?.let {
+            if (tipo == "Cabeceo") "${it.toInt()}°" else "${it.toInt()} ms"
+        }
+}
 
 data class Viaje(
     val id: String,

@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 sealed class Pantalla {
@@ -117,29 +118,49 @@ fun AppAurora() {
     var parpadeosViaje by remember { mutableStateOf(0) }
     var ultimoParpadeo by remember { mutableStateOf<Parpadeo?>(null) }
 
-    // Mientras hay un viaje en curso, escucha los parpadeos de la vincha.
-    // Todos se cuentan en pantalla; los LENTOS se guardan como evento
-    // "parpadeo_lento" (nivel 1, valor = duracion en ms). El evento va primero
-    // al telefono (Room) y el sincronizador lo sube a la web cuando hay señal.
+    // Mientras hay un viaje en curso, escucha a la vincha.
+    //  - Parpadeos: todos se cuentan en pantalla; los LENTOS se guardan como
+    //    evento "parpadeo_lento" (nivel 1, valor = duracion en ms).
+    //  - Cabeceos: todos se guardan como evento "cabeceo" (nivel 2,
+    //    valor = grados hacia adelante).
+    // Cada evento va primero al telefono (Room) y el sincronizador lo sube a
+    // la web cuando hay señal.
     val idViajeEnCurso = viajeEnCurso?.id
     LaunchedEffect(perfil?.id, idViajeEnCurso) {
         parpadeosViaje = 0
         ultimoParpadeo = null
         val p = perfil ?: return@LaunchedEffect
         val idViaje = idViajeEnCurso ?: return@LaunchedEffect
-        Vincha.parpadeos.collect { parpadeo ->
-            parpadeosViaje++
-            ultimoParpadeo = parpadeo
-            if (parpadeo.lento) {
-                Almacen.registrarEvento(
-                    perfil = p,
-                    idViaje = idViaje,
-                    tipo = "parpadeo_lento",
-                    nivel = 1,
-                    valor = parpadeo.duracionMs.toDouble(),
-                    ocurridoEnMs = parpadeo.recibidoEnMs
-                )
-                Sincronizador.huboNovedades()
+        coroutineScope {
+            launch {
+                Vincha.parpadeos.collect { parpadeo ->
+                    parpadeosViaje++
+                    ultimoParpadeo = parpadeo
+                    if (parpadeo.lento) {
+                        Almacen.registrarEvento(
+                            perfil = p,
+                            idViaje = idViaje,
+                            tipo = "parpadeo_lento",
+                            nivel = 1,
+                            valor = parpadeo.duracionMs.toDouble(),
+                            ocurridoEnMs = parpadeo.recibidoEnMs
+                        )
+                        Sincronizador.huboNovedades()
+                    }
+                }
+            }
+            launch {
+                Vincha.cabeceos.collect { cabeceo ->
+                    Almacen.registrarEvento(
+                        perfil = p,
+                        idViaje = idViaje,
+                        tipo = "cabeceo",
+                        nivel = 2,
+                        valor = cabeceo.grados.toDouble(),
+                        ocurridoEnMs = cabeceo.recibidoEnMs
+                    )
+                    Sincronizador.huboNovedades()
+                }
             }
         }
     }

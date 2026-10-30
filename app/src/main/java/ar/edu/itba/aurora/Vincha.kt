@@ -41,6 +41,14 @@ data class Parpadeo(
     val recibidoEnMs: Long   // hora del telefono al recibirlo
 )
 
+/** Un cabeceo que detecto la IMU de la vincha y llego por Bluetooth. */
+data class Cabeceo(
+    val numero: Long,        // contador de la vincha (vuelve a 1 si se reinicia)
+    val duracionMs: Int,     // cuanto duro el movimiento
+    val grados: Int,         // cuanto bajo la cabeza hacia adelante
+    val recibidoEnMs: Long   // hora del telefono al recibirlo
+)
+
 enum class EstadoVincha { DESCONECTADA, BUSCANDO, CONECTANDO, CONECTADA }
 
 /**
@@ -51,16 +59,18 @@ enum class EstadoVincha { DESCONECTADA, BUSCANDO, CONECTANDO, CONECTADA }
  *  1. "vincular" (desde Configuracion) busca un dispositivo que se anuncie
  *     como AURORA (o con el servicio de AURORA) y se conecta.
  *  2. Activa las notificaciones de la caracteristica de eventos. Desde ahi,
- *     la vincha manda un mensaje por cada parpadeo: "P,12,180,640,N"
- *     (numero, duracion en ms, amplitud en mV, N normal / L lento).
- *  3. Cada mensaje sale por [parpadeos]. Quien lo escucha (MainActivity)
- *     decide que hacer: contarlo en pantalla y, si es lento, guardarlo.
+ *     la vincha manda un mensaje por cada evento:
+ *       "P,12,180,640,N"  parpadeo (numero, duracion ms, amplitud mV, N normal / L lento)
+ *       "C,3,420,18"      cabeceo (numero, duracion ms, grados hacia adelante)
+ *     Otros mensajes (por ejemplo "A", alerta combinada) se ignoran por ahora.
+ *  3. Cada mensaje sale por [parpadeos] o [cabeceos]. Quien lo escucha
+ *     (MainActivity) decide que hacer: contarlo en pantalla y guardarlo.
  *  4. Queda VINCULADA (guardado en el telefono) hasta que el chofer toque
  *     "Desvincular" o cierre sesion. Mientras tanto se reconecta sola: si se
  *     corta, al abrir la app y cuando se vuelve a prender el Bluetooth.
  *
  * Los UUID y el formato del mensaje tienen que coincidir con el firmware
- * (AURORA_parpadeos.ino).
+ * (AURORA_eog_imu.ino).
  */
 // Guarda solo el applicationContext (vive lo mismo que la app): no hay fuga de memoria.
 @SuppressLint("StaticFieldLeak")
@@ -93,6 +103,9 @@ object Vincha {
     private val _parpadeos = MutableSharedFlow<Parpadeo>(extraBufferCapacity = 64)
     val parpadeos: SharedFlow<Parpadeo> = _parpadeos.asSharedFlow()
 
+    private val _cabeceos = MutableSharedFlow<Cabeceo>(extraBufferCapacity = 64)
+    val cabeceos: SharedFlow<Cabeceo> = _cabeceos.asSharedFlow()
+
     // Siempre se guarda el applicationContext (el de la app entera, que vive
     // lo mismo que este objeto), nunca el de una pantalla: no hay fuga de memoria.
     @SuppressLint("StaticFieldLeak")
@@ -101,7 +114,9 @@ object Vincha {
     @Volatile private var buscando = false
     // Igual que _vinculada, para leerlo rapido desde los callbacks de Bluetooth
     @Volatile private var quiereConectado = false
-    @Volatile private var ultimoNumero = -1L
+    // Ultimo numero recibido de cada tipo, para ignorar mensajes repetidos
+    @Volatile private var ultimoParpadeo = -1L
+    @Volatile private var ultimoCabeceo = -1L
     private val hilo = Handler(Looper.getMainLooper())
 
     // ------------------------------------------------------------------
@@ -312,7 +327,8 @@ object Vincha {
     private fun conectarA(dispositivo: BluetoothDevice) {
         val ctx = contexto ?: return
         _estado.value = EstadoVincha.CONECTANDO
-        ultimoNumero = -1L
+        ultimoParpadeo = -1L
+        ultimoCabeceo = -1L
         // Android 17 marca esta forma como vieja, pero es la que anda desde Android 7
         @Suppress("DEPRECATION")
         gatt = dispositivo.connectGatt(ctx, false, callbackGatt, BluetoothDevice.TRANSPORT_LE)
@@ -397,9 +413,8 @@ object Vincha {
     // Mensajes de la vincha
     // ------------------------------------------------------------------
 
-    /** "P,12,180,640,N" -> Parpadeo. Lo que no tenga ese formato se ignora. */
-    internal fun interpretar(bytes: ByteArray, ahoraMs: Long): Parpadeo? {
-        val partes = String(bytes, Charsets.UTF_8).trim().split(",")
+    /** "P,12,180,640,N" -> Parpadeo. Lo que no tenga ese formato da null. */
+    internal fun interpretarParpadeo(partes: List<String>, ahoraMs: Long): Parpadeo? {
         if (partes.size < 5 || partes[0] != "P") return null
         val numero = partes[1].toLongOrNull() ?: return null
         val duracion = partes[2].toIntOrNull() ?: return null
@@ -407,10 +422,31 @@ object Vincha {
         return Parpadeo(numero, duracion, amplitud, partes[4] == "L", ahoraMs)
     }
 
+    /** "C,3,420,18" -> Cabeceo. Lo que no tenga ese formato da null. */
+    internal fun interpretarCabeceo(partes: List<String>, ahoraMs: Long): Cabeceo? {
+        if (partes.size < 4 || partes[0] != "C") return null
+        val numero = partes[1].toLongOrNull() ?: return null
+        val duracion = partes[2].toIntOrNull() ?: return null
+        val grados = partes[3].toIntOrNull() ?: return null
+        return Cabeceo(numero, duracion, grados, ahoraMs)
+    }
+
     private fun recibir(bytes: ByteArray) {
-        val p = interpretar(bytes, System.currentTimeMillis()) ?: return
-        if (p.numero == ultimoNumero) return   // el mismo mensaje dos veces
-        ultimoNumero = p.numero
-        _parpadeos.tryEmit(p)
+        val partes = String(bytes, Charsets.UTF_8).trim().split(",")
+        val ahora = System.currentTimeMillis()
+        when (partes.firstOrNull()) {
+            "P" -> {
+                val p = interpretarParpadeo(partes, ahora) ?: return
+                if (p.numero == ultimoParpadeo) return   // el mismo mensaje dos veces
+                ultimoParpadeo = p.numero
+                _parpadeos.tryEmit(p)
+            }
+            "C" -> {
+                val c = interpretarCabeceo(partes, ahora) ?: return
+                if (c.numero == ultimoCabeceo) return
+                ultimoCabeceo = c.numero
+                _cabeceos.tryEmit(c)
+            }
+        }
     }
 }

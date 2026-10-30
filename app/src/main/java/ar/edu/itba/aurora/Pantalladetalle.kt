@@ -374,6 +374,15 @@ private fun FilaEvento(evento: Evento) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
+        // Duracion del parpadeo o grados del cabeceo
+        evento.valorTexto?.let {
+            Text(
+                it,
+                style = DatoMono,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 10.dp)
+            )
+        }
         Pastilla("Nivel ${evento.nivel}", color)
     }
 }
