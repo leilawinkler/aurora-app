@@ -584,6 +584,8 @@ private fun RenglonEstado(
     val (textoSync, colorSync) = when {
         estadoSync == EstadoSync.SINCRONIZANDO ->
             "sincronizando..." to MaterialTheme.colorScheme.secondary
+        estadoSync == EstadoSync.ERROR ->
+            "error al sincronizar" to MaterialTheme.colorScheme.error
         !hayInternet || estadoSync == EstadoSync.SIN_CONEXION ->
             "sin internet" to MaterialTheme.colorScheme.error
         else ->

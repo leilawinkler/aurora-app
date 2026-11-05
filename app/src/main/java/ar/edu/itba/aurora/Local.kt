@@ -93,11 +93,19 @@ interface AuroraDao {
     // Lo que falta subir
     // ------------------------------------------------------------------
 
-    @Query("SELECT * FROM viajes WHERE pendiente = 1")
-    suspend fun viajesPendientes(): List<ViajeLocal>
+    // Solo lo del chofer que esta adentro. Si en el telefono quedo algo sin
+    // subir de OTRO chofer (por ejemplo, se probo con varias cuentas en el
+    // mismo celular), Supabase lo rechaza por las reglas RLS: no se puede
+    // subir un viaje ajeno. Antes se mandaba todo junto y ese rechazo
+    // trababa la subida de todo lo demas, para siempre.
+    @Query("SELECT * FROM viajes WHERE pendiente = 1 AND choferId = :chofer")
+    suspend fun viajesPendientesDe(chofer: String): List<ViajeLocal>
 
-    @Query("SELECT * FROM eventos WHERE pendiente = 1")
-    suspend fun eventosPendientes(): List<EventoLocal>
+    @Query(
+        "SELECT * FROM eventos WHERE pendiente = 1 AND viajeId IN " +
+                "(SELECT id FROM viajes WHERE choferId = :chofer)"
+    )
+    suspend fun eventosPendientesDe(chofer: String): List<EventoLocal>
 
     /**
      * Marca un viaje como subido SOLO si no cambio desde que se leyo para
@@ -109,7 +117,7 @@ interface AuroraDao {
      */
     @Query(
         "UPDATE viajes SET pendiente = 0 WHERE id = :id AND estado = :estado " +
-            "AND IFNULL(finMs, -1) = :finMsOMenosUno"
+                "AND IFNULL(finMs, -1) = :finMsOMenosUno"
     )
     suspend fun marcarViajeSubidoSiNoCambio(id: String, estado: String, finMsOMenosUno: Long)
 
@@ -120,9 +128,16 @@ interface AuroraDao {
 
     @Query(
         "SELECT (SELECT COUNT(*) FROM viajes WHERE pendiente = 1) + " +
-            "(SELECT COUNT(*) FROM eventos WHERE pendiente = 1)"
+                "(SELECT COUNT(*) FROM eventos WHERE pendiente = 1)"
     )
     suspend fun cuantosPendientes(): Int
+
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM viajes WHERE pendiente = 1 AND choferId = :chofer) + " +
+                "(SELECT COUNT(*) FROM eventos WHERE pendiente = 1 AND viajeId IN " +
+                "(SELECT id FROM viajes WHERE choferId = :chofer))"
+    )
+    suspend fun cuantosPendientesDe(chofer: String): Int
 
     // ------------------------------------------------------------------
     // Limpieza: el telefono guarda solo lo que hace falta
@@ -133,13 +148,13 @@ interface AuroraDao {
 
     @Query(
         "DELETE FROM eventos WHERE pendiente = 0 AND viajeId IN " +
-            "(SELECT id FROM viajes WHERE pendiente = 0 AND estado != 'en_curso')"
+                "(SELECT id FROM viajes WHERE pendiente = 0 AND estado != 'en_curso')"
     )
     suspend fun borrarEventosDeViajesTerminados()
 
     @Query(
         "DELETE FROM viajes WHERE pendiente = 0 AND estado != 'en_curso' " +
-            "AND id NOT IN (SELECT viajeId FROM eventos)"
+                "AND id NOT IN (SELECT viajeId FROM eventos)"
     )
     suspend fun borrarViajesTerminados()
 }

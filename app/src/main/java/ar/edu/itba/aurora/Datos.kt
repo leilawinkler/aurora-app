@@ -66,9 +66,19 @@ object Datos {
         supabase.from("viajes").upsert(viajes.map { it.aFila() })
     }
 
+    /**
+     * Sube eventos. Los eventos nunca cambian despues de creados, asi que si
+     * uno ya estaba en la nube (porque el envio anterior llego pero no
+     * alcanzamos a marcarlo como subido), se ignora en vez de pisarlo.
+     * Asi alcanza con el permiso de INSERT de la tabla "eventos": un upsert
+     * comun ("si existe, actualizalo") ademas exige una regla RLS de UPDATE,
+     * y sin ella Supabase rechazaba todos los eventos.
+     */
     suspend fun subirEventos(eventos: List<EventoLocal>) {
         if (eventos.isEmpty()) return
-        supabase.from("eventos").upsert(eventos.map { it.aFila() })
+        supabase.from("eventos").upsert(eventos.map { it.aFila() }) {
+            ignoreDuplicates = true
+        }
     }
 
     /** Trae los viajes del chofer que estan en la nube. */

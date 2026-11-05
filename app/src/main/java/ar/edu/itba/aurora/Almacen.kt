@@ -60,7 +60,10 @@ object Almacen {
         Local.dao.viajesDe(idChofer).firstOrNull { it.estado == "en_curso" }
 
     /** Cuantas cosas hay guardadas en el telefono sin subir todavia. */
-    suspend fun pendientes(): Int = Local.dao.cuantosPendientes()
+    suspend fun pendientes(): Int {
+        val chofer = Preferencias.perfilGuardado?.id ?: return 0
+        return Local.dao.cuantosPendientesDe(chofer)
+    }
 
     // ------------------------------------------------------------------
     // Escritura (siempre local; no necesita señal)
@@ -148,20 +151,38 @@ object Almacen {
      */
     suspend fun sincronizar(): Result<Int> = runCatching {
         val dao = Local.dao
+        val chofer = Preferencias.perfilGuardado?.id ?: return@runCatching 0
 
-        // Primero los viajes: los eventos apuntan a ellos.
-        val viajesPendientes = dao.viajesPendientes()
-        if (viajesPendientes.isNotEmpty()) {
-            Datos.subirViajes(viajesPendientes)
-            viajesPendientes.forEach { v ->
-                dao.marcarViajeSubidoSiNoCambio(v.id, v.estado, v.finMs ?: -1L)
+        // Se sube viaje por viaje (cada viaje y despues sus eventos). Si
+        // Supabase rechaza uno (no por falta de señal: por una regla de la
+        // base, un dato invalido, etc.), se anota el error y se sigue con
+        // los demas, asi un viaje con problemas no traba todo.
+        // Si el error es de señal, se corta enseguida: los demas van a
+        // fallar igual.
+        val viajesPendientes = dao.viajesPendientesDe(chofer)
+        val eventosPendientes = dao.eventosPendientesDe(chofer).groupBy { it.viajeId }
+        // Viajes ya subidos que tienen eventos nuevos sin subir.
+        val idsViajes = (viajesPendientes.map { it.id } + eventosPendientes.keys).distinct()
+
+        var primerError: Throwable? = null
+        for (id in idsViajes) {
+            try {
+                // Primero el viaje: los eventos apuntan a el.
+                viajesPendientes.firstOrNull { it.id == id }?.let { v ->
+                    Datos.subirViajes(listOf(v))
+                    dao.marcarViajeSubidoSiNoCambio(v.id, v.estado, v.finMs ?: -1L)
+                }
+                val eventos = eventosPendientes[id].orEmpty()
+                if (eventos.isNotEmpty()) {
+                    Datos.subirEventos(eventos)
+                    dao.marcarEventosSubidos(eventos.map { it.id })
+                }
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.e("AuroraSync", "No se pudo subir el viaje $id", e)
+                if (esErrorDeRed(e)) throw e
+                if (primerError == null) primerError = e
             }
-        }
-
-        val eventosPendientes = dao.eventosPendientes()
-        if (eventosPendientes.isNotEmpty()) {
-            Datos.subirEventos(eventosPendientes)
-            dao.marcarEventosSubidos(eventosPendientes.map { it.id })
         }
 
         // Historial de la nube, a memoria
@@ -176,7 +197,11 @@ object Almacen {
         }
 
         limpiarTelefono()
-        viajesPendientes.size + eventosPendientes.size
+
+        // Si algun viaje fue rechazado, la sincronizacion cuenta como fallida
+        // y el error real llega al Sincronizador para mostrarlo.
+        primerError?.let { throw it }
+        viajesPendientes.size + eventosPendientes.values.sumOf { it.size }
     }
 
     /** Borra del telefono lo ya subido y terminado. Lo pendiente no se toca. */

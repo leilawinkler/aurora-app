@@ -25,6 +25,8 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -127,9 +129,22 @@ fun PantallaConfiguracion(
                         EstadoSync.SINCRONIZANDO -> "sincronizando..."
                         EstadoSync.SINCRONIZADO -> "sincronizado"
                         EstadoSync.SIN_CONEXION -> "sin conexion"
+                        EstadoSync.ERROR -> "error"
                     },
-                    resaltado = estadoSync == EstadoSync.SIN_CONEXION
+                    resaltado = estadoSync == EstadoSync.SIN_CONEXION ||
+                            estadoSync == EstadoSync.ERROR
                 )
+                // El motivo real del ultimo fallo, tal como lo devolvio
+                // Supabase. Sirve para saber que paso sin conectar la compu.
+                val ultimoError by Sincronizador.ultimoError.collectAsState()
+                ultimoError?.let {
+                    Text(
+                        "Detalle: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
                 FilaDato(
                     "Sin subir",
                     if (pendientes == 0) "nada pendiente" else "$pendientes registros",

@@ -17,7 +17,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 enum class EstadoSync {
     SINCRONIZADO,
     SINCRONIZANDO,
-    SIN_CONEXION
+    SIN_CONEXION,
+    // Hay señal, pero Supabase rechazo algo (regla de la base, sesion
+    // vencida, dato invalido). El detalle queda en Sincronizador.ultimoError.
+    ERROR
 }
 
 /**
@@ -42,6 +45,11 @@ object Sincronizador {
 
     private val _pendientes = MutableStateFlow(0)
     val pendientes: StateFlow<Int> = _pendientes
+
+    // El motivo real de la ultima sincronizacion fallida, para mostrarlo en
+    // Configuracion. null = la ultima salio bien.
+    private val _ultimoError = MutableStateFlow<String?>(null)
+    val ultimoError: StateFlow<String?> = _ultimoError
 
     // Sube de a uno cada vez que algo cambia. Las pantallas lo miran para
     // saber que tienen que volver a leer la lista de viajes.
@@ -140,7 +148,16 @@ object Sincronizador {
         if (!Sesion.reconectar()) {
             _necesitaClave.value = Sesion.necesitaClave && hayInternetConfirmado()
             _pendientes.value = runCatching { Almacen.pendientes() }.getOrDefault(0)
-            _estado.value = EstadoSync.SIN_CONEXION
+            if (Sesion.necesitaClave) {
+                // No es falta de señal: no hay sesion con Supabase y la app
+                // no tiene la contraseña para abrirla.
+                _ultimoError.value = "Falta iniciar sesión con Supabase. " +
+                        "Cerrá sesión y volvé a entrar con señal."
+                _estado.value = EstadoSync.ERROR
+            } else {
+                _ultimoError.value = "No se pudo conectar con el servidor."
+                _estado.value = EstadoSync.SIN_CONEXION
+            }
             _cambios.value = _cambios.value + 1
             return
         }
@@ -160,11 +177,20 @@ object Sincronizador {
         // Recien subido un viaje nuevo: que la web vea el estado enseguida.
         if (resultado.isSuccess) latidoAhora()
 
-        _estado.value = if (resultado.isSuccess) {
-            EstadoSync.SINCRONIZADO
+        val error = resultado.exceptionOrNull()
+        if (error == null) {
+            // Si se pudo hablar con Supabase, hay internet, diga lo que diga
+            // el chequeo de Android (que a veces falla en redes publicas o
+            // en el hotspot del iPhone).
+            _hayInternet.value = true
+            _ultimoError.value = null
+            _estado.value = EstadoSync.SINCRONIZADO
         } else {
-            // La razon realista para que falle es quedarse sin señal.
-            EstadoSync.SIN_CONEXION
+            android.util.Log.e("AuroraSync", "Fallo la sincronizacion", error)
+            _ultimoError.value = error.message ?: error.toString()
+            // Solo se dice "sin conexion" si de verdad fue un error de red.
+            _estado.value =
+                if (esErrorDeRed(error)) EstadoSync.SIN_CONEXION else EstadoSync.ERROR
         }
 
         _cambios.value = _cambios.value + 1
@@ -221,6 +247,7 @@ object Sincronizador {
     fun reiniciar() {
         _estado.value = EstadoSync.SINCRONIZADO
         _pendientes.value = 0
+        _ultimoError.value = null
         _necesitaClave.value = false
         _cuentaBloqueada.value = null
     }
