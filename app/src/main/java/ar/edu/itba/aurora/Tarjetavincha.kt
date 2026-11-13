@@ -142,7 +142,7 @@ private fun FilaVincha(etiqueta: String, valor: String, resaltado: Boolean = fal
         Text(
             valor,
             style = DatoMono,
-            color = if (resaltado) Nivel2 else MaterialTheme.colorScheme.onSurface
+            color = if (resaltado) Peligro else MaterialTheme.colorScheme.onSurface
         )
     }
 }

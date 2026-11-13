@@ -55,8 +55,9 @@ import kotlinx.coroutines.delay
 @Composable
 fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
     val oscuro = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val n1 = viaje.eventos.count { it.nivel == 1 }
-    val n2 = viaje.eventos.count { it.nivel >= 2 }
+    val n1 = viaje.eventos.count { it.nivel <= 1 }
+    val n2 = viaje.eventos.count { it.nivel == 2 }
+    val n3 = viaje.eventos.count { it.nivel >= 3 }
 
     Column(
         modifier = Modifier
@@ -94,11 +95,15 @@ fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
             }
         }
 
-        // --- Tres cifras, como las tarjetas de la web ---
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            TarjetaCifra("Duración", viaje.duracion, RosaAurora, Modifier.weight(1.3f))
+        // --- Cifras, como las tarjetas de la web ---
+        TarjetaCifra("Duración", viaje.duracion, RosaAurora, Modifier.fillMaxWidth())
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(top = 10.dp)
+        ) {
             TarjetaCifra("Nivel 1", n1.toString(), Nivel1, Modifier.weight(1f))
             TarjetaCifra("Nivel 2", n2.toString(), Nivel2, Modifier.weight(1f))
+            TarjetaCifra("Nivel 3", n3.toString(), Nivel3, Modifier.weight(1f))
         }
 
         // --- Grafico ---
@@ -119,8 +124,9 @@ fun PantallaDetalle(viaje: Viaje, onVolver: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Leyenda(Nivel1, "Nivel 1", "precaución")
-                Leyenda(Nivel2, "Nivel 2", "alerta", Modifier.padding(start = 14.dp))
+                Leyenda(Nivel1, "N1", "somnolencia")
+                Leyenda(Nivel2, "N2", "microsueño", Modifier.padding(start = 10.dp))
+                Leyenda(Nivel3, "N3", "cabeceo", Modifier.padding(start = 10.dp))
             }
             Text(
                 "${viaje.eventos.size} eventos · ${viaje.duracion}" + if (viaje.enCurso) " · en curso" else "",
@@ -180,7 +186,7 @@ private fun ContenedorGraficoViaje(viaje: Viaje) {
 /**
  * Cada evento es un palito con un punto, ubicado en el momento en que
  * ocurrio. El eje horizontal va de que arranco el viaje a que termino (o a
- * ahora, si sigue abierto). Nivel 1 queda a media altura y nivel 2 arriba.
+ * ahora, si sigue abierto). Nivel 1 abajo, nivel 2 al medio y nivel 3 arriba.
  * Es el mismo dibujo que hace la web en dibujarGraficoViaje().
  */
 @Composable
@@ -225,10 +231,14 @@ private fun GraficoViaje(viaje: Viaje, ancho: Dp) {
         val base = arriba + altoArea
 
         fun xDe(ms: Long) = izq + ((ms - t0) / duracion) * anchoArea
-        fun yDe(nivel: Int) = base - if (nivel >= 2) altoArea * 0.85f else altoArea * 0.45f
+        fun yDe(nivel: Int) = base - altoArea * when {
+            nivel >= 3 -> 0.88f
+            nivel == 2 -> 0.6f
+            else -> 0.32f
+        }
 
-        // Lineas guia de los dos niveles, con su rotulo
-        listOf(1, 2).forEach { nivel ->
+        // Lineas guia de los tres niveles, con su rotulo
+        listOf(1, 2, 3).forEach { nivel ->
             val y = yDe(nivel)
             drawLine(colorLinea, Offset(izq, y), Offset(size.width - der, y), strokeWidth = 1.dp.toPx())
             val r = medidor.measure("N$nivel", estilo)

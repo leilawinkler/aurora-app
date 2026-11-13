@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
@@ -41,6 +42,13 @@ data class Parpadeo(
     val recibidoEnMs: Long   // hora del telefono al recibirlo
 )
 
+/** Alerta de NIVEL 1 (somnolencia): subio el promedio de duracion del parpadeo (la vincha vibro). */
+data class AlertaNivel1(
+    val numero: Long,        // contador de la vincha (vuelve a 1 si se reinicia)
+    val promedioMs: Int,     // promedio de duracion del parpadeo en los ultimos 20 s
+    val recibidoEnMs: Long
+)
+
 /** Un cabeceo que detecto la IMU de la vincha y llego por Bluetooth. */
 data class Cabeceo(
     val numero: Long,        // contador de la vincha (vuelve a 1 si se reinicia)
@@ -52,6 +60,20 @@ data class Cabeceo(
 enum class EstadoVincha { DESCONECTADA, BUSCANDO, CONECTANDO, CONECTADA }
 
 /**
+ * Mensajes de la vincha durante una calibracion (firmware v18.1).
+ * duracion = true: calibracion de duracion basal (CD) / false: de amplitud antes del viaje (CA).
+ */
+sealed class MensajeCalibracion {
+    data class Inicio(val duracion: Boolean) : MensajeCalibracion()
+    data class Progreso(val segundos: Int, val parpadeos: Int) : MensajeCalibracion()
+    data class DuracionOk(val basalMs: Int, val parpadeos: Int) : MensajeCalibracion()
+    // Termino TODA la calibracion del viaje: la vincha ya vibro y esta detectando
+    data class AmplitudOk(val umbralMv: Int, val polaridad: Int, val parpadeos: Int) : MensajeCalibracion()
+    // codigo: POL (vincha al reves) | SINP (sin parpadeos) | ERR (otro) | CANC (cancelada)
+    data class Error(val duracion: Boolean, val codigo: String) : MensajeCalibracion()
+}
+
+/**
  * La conexion Bluetooth (BLE) con la vincha. Es un objeto unico para toda la
  * app: la conexion sigue viva aunque se cambie de pantalla.
  *
@@ -60,11 +82,17 @@ enum class EstadoVincha { DESCONECTADA, BUSCANDO, CONECTANDO, CONECTADA }
  *     como AURORA (o con el servicio de AURORA) y se conecta.
  *  2. Activa las notificaciones de la caracteristica de eventos. Desde ahi,
  *     la vincha manda un mensaje por cada evento:
- *       "P,12,180,640,N"  parpadeo (numero, duracion ms, amplitud mV, N normal / L lento)
- *       "C,3,420,18"      cabeceo (numero, duracion ms, grados hacia adelante)
- *     Otros mensajes (por ejemplo "A", alerta combinada) se ignoran por ahora.
- *  3. Cada mensaje sale por [parpadeos] o [cabeceos]. Quien lo escucha
- *     (MainActivity) decide que hacer: contarlo en pantalla y guardarlo.
+ *       "A,4,182"         NIVEL 1, somnolencia (numero, promedio de duracion ms)
+ *       "P,12,180,640,N"  parpadeo (numero, duracion ms, amplitud mV, N normal / L = MICROSUEÑO, nivel 2)
+ *       "C,3,420,18,A"    NIVEL 3, cabeceo (numero, duracion ms, grados, A adelante / T atras)
+ *       "KD,..." / "KA,..." / "KP,..."  calibracion (ver [MensajeCalibracion])
+ *       "AF,182"          fin del nivel 1
+ *     Otros mensajes ("F" fin del microsueño) se ignoran por ahora.
+ *  3. Cada mensaje sale por [alertasNivel1], [parpadeos], [cabeceos] o [calibracion]. Quien lo
+ *     escucha (MainActivity, PantallaCalibracion) decide que hacer.
+ *  3b. La app le manda ordenes a la vincha con [enviar] (caracteristica de
+ *     comandos): "CD" calibrar duracion basal, "CA,<basal_ms>" calibrar antes
+ *     del viaje, "X" cancelar / terminar el viaje.
  *  4. Queda VINCULADA (guardado en el telefono) hasta que el chofer toque
  *     "Desvincular" o cierre sesion. Mientras tanto se reconecta sola: si se
  *     corta, al abrir la app y cuando se vuelve a prender el Bluetooth.
@@ -79,6 +107,8 @@ object Vincha {
     const val NOMBRE = "AURORA"
     private val UUID_SERVICIO: UUID = UUID.fromString("6e7a0001-4a55-4b8e-9f2a-a0b0c0d0e0f0")
     private val UUID_EVENTOS: UUID = UUID.fromString("6e7a0002-4a55-4b8e-9f2a-a0b0c0d0e0f0")
+    // Ordenes de la app a la vincha (firmware v18 en adelante)
+    private val UUID_COMANDOS: UUID = UUID.fromString("6e7a0003-4a55-4b8e-9f2a-a0b0c0d0e0f0")
     // Descriptor estandar de Bluetooth para prender las notificaciones
     private val UUID_CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
@@ -103,20 +133,33 @@ object Vincha {
     private val _parpadeos = MutableSharedFlow<Parpadeo>(extraBufferCapacity = 64)
     val parpadeos: SharedFlow<Parpadeo> = _parpadeos.asSharedFlow()
 
+    private val _alertasNivel1 = MutableSharedFlow<AlertaNivel1>(extraBufferCapacity = 16)
+    val alertasNivel1: SharedFlow<AlertaNivel1> = _alertasNivel1.asSharedFlow()
+
+    // "AF": el nivel 1 termino (un bloque de 20 s ya no fue somnoliento). Lleva la hora de llegada.
+    private val _finesNivel1 = MutableSharedFlow<Long>(extraBufferCapacity = 16)
+    val finesNivel1: SharedFlow<Long> = _finesNivel1.asSharedFlow()
+
     private val _cabeceos = MutableSharedFlow<Cabeceo>(extraBufferCapacity = 64)
     val cabeceos: SharedFlow<Cabeceo> = _cabeceos.asSharedFlow()
+
+    private val _calibracion = MutableSharedFlow<MensajeCalibracion>(extraBufferCapacity = 16)
+    val calibracion: SharedFlow<MensajeCalibracion> = _calibracion.asSharedFlow()
 
     // Siempre se guarda el applicationContext (el de la app entera, que vive
     // lo mismo que este objeto), nunca el de una pantalla: no hay fuga de memoria.
     @SuppressLint("StaticFieldLeak")
     private var contexto: Context? = null
     @Volatile private var gatt: BluetoothGatt? = null
+    // null = la vincha tiene un firmware viejo, sin caracteristica de comandos
+    @Volatile private var caracteristicaComandos: BluetoothGattCharacteristic? = null
     @Volatile private var buscando = false
     // Igual que _vinculada, para leerlo rapido desde los callbacks de Bluetooth
     @Volatile private var quiereConectado = false
     // Ultimo numero recibido de cada tipo, para ignorar mensajes repetidos
     @Volatile private var ultimoParpadeo = -1L
     @Volatile private var ultimoCabeceo = -1L
+    @Volatile private var ultimaAlerta = -1L
     private val hilo = Handler(Looper.getMainLooper())
 
     // ------------------------------------------------------------------
@@ -202,9 +245,44 @@ object Vincha {
             runCatching { it.close() }
         }
         gatt = null
+        caracteristicaComandos = null
         _estado.value = EstadoVincha.DESCONECTADA
         _aviso.value = null
     }
+
+    // ------------------------------------------------------------------
+    // Ordenes a la vincha
+    // ------------------------------------------------------------------
+
+    /**
+     * Manda una orden a la vincha ("CD", "CA,165", "X"). Devuelve false si no
+     * se pudo mandar: vincha desconectada, o con un firmware viejo (sin la
+     * caracteristica de comandos).
+     */
+    @SuppressLint("MissingPermission")
+    fun enviar(comando: String): Boolean {
+        val g = gatt ?: return false
+        val c = caracteristicaComandos ?: return false
+        if (_estado.value != EstadoVincha.CONECTADA) return false
+        val bytes = comando.toByteArray(Charsets.UTF_8)
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                g.writeCharacteristic(c, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) ==
+                        BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                c.value = bytes
+                @Suppress("DEPRECATION")
+                g.writeCharacteristic(c)
+            }
+        }.getOrDefault(false)
+    }
+
+    /** true si la vincha conectada entiende ordenes (firmware v18 en adelante). */
+    val aceptaComandos: Boolean
+        get() = caracteristicaComandos != null && _estado.value == EstadoVincha.CONECTADA
 
     // ------------------------------------------------------------------
     // Busqueda
@@ -311,6 +389,7 @@ object Vincha {
                     detenerBusqueda()
                     gatt?.let { runCatching { it.close() } }
                     gatt = null
+                    caracteristicaComandos = null
                     _estado.value = EstadoVincha.DESCONECTADA
                     if (quiereConectado)
                         _aviso.value = "El Bluetooth del teléfono está apagado. Prendelo para reconectar la vincha."
@@ -329,6 +408,7 @@ object Vincha {
         _estado.value = EstadoVincha.CONECTANDO
         ultimoParpadeo = -1L
         ultimoCabeceo = -1L
+        ultimaAlerta = -1L
         // Android 17 marca esta forma como vieja, pero es la que anda desde Android 7
         @Suppress("DEPRECATION")
         gatt = dispositivo.connectGatt(ctx, false, callbackGatt, BluetoothDevice.TRANSPORT_LE)
@@ -338,7 +418,10 @@ object Vincha {
     @SuppressLint("MissingPermission")
     private fun alPerderConexion(g: BluetoothGatt) {
         runCatching { g.close() }
-        if (gatt == g) gatt = null
+        if (gatt == g) {
+            gatt = null
+            caracteristicaComandos = null
+        }
         _estado.value = EstadoVincha.DESCONECTADA
         if (quiereConectado) {
             _aviso.value = "Se perdió la conexión con la vincha. Reconectando..."
@@ -367,6 +450,7 @@ object Vincha {
                 runCatching { g.disconnect() }
                 return
             }
+            caracteristicaComandos = g.getService(UUID_SERVICIO)?.getCharacteristic(UUID_COMANDOS)
             g.setCharacteristicNotification(caracteristica, true)
             val valor = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -431,6 +515,41 @@ object Vincha {
         return Cabeceo(numero, duracion, grados, ahoraMs)
     }
 
+    /** "A,4,182" -> AlertaNivel1. Lo que no tenga ese formato da null. */
+    internal fun interpretarAlerta(partes: List<String>, ahoraMs: Long): AlertaNivel1? {
+        if (partes.size < 3 || partes[0] != "A") return null
+        val numero = partes[1].toLongOrNull() ?: return null
+        val promedio = partes[2].toIntOrNull() ?: return null
+        return AlertaNivel1(numero, promedio, ahoraMs)
+    }
+
+    /** "KD,OK,165,12", "KA,ERR,POL", "KP,20,7"... -> MensajeCalibracion. Si no, null. */
+    internal fun interpretarCalibracion(partes: List<String>): MensajeCalibracion? {
+        val tipo = partes.firstOrNull() ?: return null
+        if (tipo == "KP") {
+            val segundos = partes.getOrNull(1)?.toIntOrNull() ?: return null
+            return MensajeCalibracion.Progreso(segundos, partes.getOrNull(2)?.toIntOrNull() ?: 0)
+        }
+        if (tipo != "KD" && tipo != "KA") return null
+        val duracion = tipo == "KD"
+        return when (partes.getOrNull(1)) {
+            "INI" -> MensajeCalibracion.Inicio(duracion)
+            "ERR" -> MensajeCalibracion.Error(duracion, partes.getOrNull(2) ?: "ERR")
+            "OK" -> if (duracion) {
+                val basal = partes.getOrNull(2)?.toIntOrNull() ?: return null
+                MensajeCalibracion.DuracionOk(basal, partes.getOrNull(3)?.toIntOrNull() ?: 0)
+            } else {
+                val umbral = partes.getOrNull(2)?.toIntOrNull() ?: return null
+                MensajeCalibracion.AmplitudOk(
+                    umbral,
+                    partes.getOrNull(3)?.toIntOrNull() ?: 1,
+                    partes.getOrNull(4)?.toIntOrNull() ?: 0
+                )
+            }
+            else -> null
+        }
+    }
+
     private fun recibir(bytes: ByteArray) {
         val partes = String(bytes, Charsets.UTF_8).trim().split(",")
         val ahora = System.currentTimeMillis()
@@ -447,6 +566,14 @@ object Vincha {
                 ultimoCabeceo = c.numero
                 _cabeceos.tryEmit(c)
             }
+            "AF" -> _finesNivel1.tryEmit(ahora)
+            "A" -> {
+                val a = interpretarAlerta(partes, ahora) ?: return
+                if (a.numero == ultimaAlerta) return
+                ultimaAlerta = a.numero
+                _alertasNivel1.tryEmit(a)
+            }
+            "KD", "KA", "KP" -> interpretarCalibracion(partes)?.let { _calibracion.tryEmit(it) }
         }
     }
 }

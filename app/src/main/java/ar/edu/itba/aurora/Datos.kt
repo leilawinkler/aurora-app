@@ -2,6 +2,9 @@ package ar.edu.itba.aurora
 
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.SerialName
@@ -43,6 +46,16 @@ data class EventoFila(
 
 @Serializable
 private data class EmpresaFila(val nombre: String)
+
+/** Columnas de la calibracion de duracion en la ficha del chofer (supabase_calibracion.sql). */
+@Serializable
+private data class BasalFila(
+    @SerialName("dur_basal_ms") val durBasalMs: Int? = null,
+    @SerialName("basal_calibrado_en") val calibradoEn: String? = null
+)
+
+/** La duracion basal que esta en la nube. ms = null: el chofer nunca calibro. */
+data class BasalNube(val ms: Int?, val calibradoEnMs: Long?)
 
 /** Lo que manda el "latido" del viaje en curso (ver Datos.latido). */
 @Serializable
@@ -124,6 +137,35 @@ object Datos {
         ) {
             filter { eq("id", idViaje) }
         }
+    }
+
+    /**
+     * Duracion basal del chofer guardada en la nube. Va en una consulta
+     * aparte de la ficha (Sesion.perfil) a proposito: si la columna todavia
+     * no existe en la base, falla solo esto y el login sigue andando.
+     */
+    suspend fun bajarBasal(idChofer: String): BasalNube? =
+        supabase.from("usuarios")
+            .select(Columns.list("dur_basal_ms", "basal_calibrado_en")) {
+                filter { eq("id", idChofer) }
+            }
+            .decodeSingleOrNull<BasalFila>()
+            ?.let { BasalNube(it.durBasalMs, aMilisegundos(it.calibradoEn)) }
+
+    /**
+     * Sube una calibracion de duracion. Usa la funcion guardar_basal del
+     * servidor (supabase_calibracion.sql), que solo deja cambiar la ficha
+     * propia y solo esas columnas.
+     */
+    suspend fun subirBasal(ms: Int, parpadeos: Int, calibradoEnMs: Long) {
+        supabase.postgrest.rpc(
+            "guardar_basal",
+            buildJsonObject {
+                put("p_ms", ms)
+                put("p_parpadeos", parpadeos)
+                put("p_calibrado_en", aTexto(calibradoEnMs))
+            }
+        )
     }
 
     /** Nombre de la empresa del chofer. Devuelve null si no se puede leer. */
@@ -275,8 +317,10 @@ fun cronometro(desdeMs: Long?, hastaMs: Long): String {
 }
 
 private fun nombreTipo(tipo: String): String = when (tipo) {
-    "parpadeo_lento" -> "Parpadeo lento"
+    "somnolencia" -> "Somnolencia"
+    "microsueno" -> "Microsueño"
     "cabeceo" -> "Cabeceo"
+    "parpadeo_lento" -> "Parpadeo lento"   // eventos viejos (antes de los 3 niveles)
     else -> "Otro"
 }
 
@@ -312,10 +356,13 @@ private fun eventosPorHora(
 
 private fun resumen(eventos: List<EventoLocal>): String {
     if (eventos.isEmpty()) return ""
-    val nivel2 = eventos.count { it.nivel >= 2 }
-    return if (nivel2 > 0) {
-        "$nivel2 de ${eventos.size} eventos llegaron a nivel de alerta."
-    } else {
-        "${eventos.size} eventos, todos en nivel de precaucion."
-    }
+    val n1 = eventos.count { it.nivel <= 1 }
+    val n2 = eventos.count { it.nivel == 2 }
+    val n3 = eventos.count { it.nivel >= 3 }
+    val partes = listOfNotNull(
+        if (n1 > 0) "$n1 de somnolencia (nivel 1)" else null,
+        if (n2 > 0) "$n2 microsueño${if (n2 > 1) "s" else ""} (nivel 2)" else null,
+        if (n3 > 0) "$n3 cabeceo${if (n3 > 1) "s" else ""} (nivel 3)" else null
+    )
+    return "${eventos.size} eventos: ${partes.joinToString(", ")}."
 }

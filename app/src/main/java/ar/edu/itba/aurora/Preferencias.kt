@@ -25,6 +25,18 @@ data class CredencialSinSenal(
 )
 
 /**
+ * Duracion basal del parpadeo de un chofer (calibracion de duracion).
+ * pendiente = true mientras no se haya subido a Supabase (se calibro sin señal).
+ */
+@Serializable
+data class BasalGuardado(
+    val ms: Int,
+    val parpadeos: Int = 0,
+    val calibradoEnMs: Long,
+    val pendiente: Boolean
+)
+
+/**
  * Datos chicos que quedan guardados en el telefono aunque se cierre la app,
  * se apague el celular o no haya señal. Es un archivo de Android
  * (SharedPreferences), aparte de la base de Room.
@@ -37,6 +49,7 @@ object Preferencias {
     private const val EMPRESA = "nombre_empresa"
     private const val CREDENCIALES = "credenciales_sin_senal"
     private const val VINCHA_VINCULADA = "vincha_vinculada"
+    private const val BASAL = "basal_"   // + id del chofer
 
     private var prefs: SharedPreferences? = null
     private val json = Json { ignoreUnknownKeys = true }
@@ -89,6 +102,23 @@ object Preferencias {
             if (valor.isNullOrBlank()) editor.remove(EMPRESA) else editor.putString(EMPRESA, valor)
             editor.apply()
         }
+
+    // ------------------------------------------------------------------
+    // Duracion basal del parpadeo, una por chofer (ver Calibracion.kt).
+    // Es la copia local de la que esta en Supabase: sirve para empezar un
+    // viaje sin señal. No se borra al cerrar sesion.
+    // ------------------------------------------------------------------
+
+    fun basalDe(idChofer: String): BasalGuardado? =
+        prefs?.getString(BASAL + idChofer, null)?.let {
+            runCatching { json.decodeFromString(BasalGuardado.serializer(), it) }.getOrNull()
+        }
+
+    fun guardarBasal(idChofer: String, basal: BasalGuardado) {
+        prefs?.edit()
+            ?.putString(BASAL + idChofer, json.encodeToString(BasalGuardado.serializer(), basal))
+            ?.apply()
+    }
 
     // ------------------------------------------------------------------
     // Credenciales para entrar sin señal, una por chofer que uso el telefono.

@@ -89,7 +89,12 @@ fun PantallaViajes(
     // Lo que llega de la vincha durante el viaje en curso
     parpadeosViaje: Int = 0,
     ultimoParpadeo: Parpadeo? = null,
-    vinchaConectada: Boolean = false
+    estadoNivel: EstadoNivel = EstadoNivel(),
+    vinchaConectada: Boolean = false,
+    // Calibracion de duracion: sin basal guardado no se puede empezar un viaje
+    faltaCalibrar: Boolean = false,
+    puedeIniciar: Boolean = true,
+    onCalibrar: () -> Unit = {}
 ) {
     Scaffold(
         modifier = Modifier
@@ -133,7 +138,7 @@ fun PantallaViajes(
 
                 FilledIconButton(
                     onClick = onNuevoViaje,
-                    enabled = viajeEnCurso == null
+                    enabled = viajeEnCurso == null && puedeIniciar
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Nuevo viaje")
                 }
@@ -155,6 +160,12 @@ fun PantallaViajes(
                     )
                 }
 
+                // Nunca calibro la duracion basal: tiene que hacerlo antes del
+                // primer viaje (el + queda deshabilitado hasta entonces).
+                if (faltaCalibrar) {
+                    item { AvisoCalibrar(onCalibrar) }
+                }
+
                 // Hay señal pero falta la contraseña para abrir la sesion y
                 // subir. No bloquea nada: el chofer puede seguir trabajando.
                 if (necesitaClave) {
@@ -170,6 +181,7 @@ fun PantallaViajes(
                             onAbrir = { onAbrirViaje(viajeEnCurso) },
                             parpadeos = parpadeosViaje,
                             ultimoParpadeo = ultimoParpadeo,
+                            estadoNivel = estadoNivel,
                             vinchaConectada = vinchaConectada
                         )
                     }
@@ -243,6 +255,7 @@ private fun TarjetaViajeEnCurso(
     onAbrir: () -> Unit,
     parpadeos: Int,
     ultimoParpadeo: Parpadeo?,
+    estadoNivel: EstadoNivel,
     vinchaConectada: Boolean
 ) {
     Card(
@@ -282,6 +295,29 @@ private fun TarjetaViajeEnCurso(
                     style = EtiquetaMono,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // Nivel actual del conductor (el mas reciente que sigue vigente)
+                val nivel = estadoNivel.nivelEn(ahora)
+                val colorNivel = if (nivel == 0) VerdeOk else colorDeNivel(nivel)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .background(colorNivel.copy(alpha = 0.14f), RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .background(colorNivel, CircleShape)
+                    )
+                    Text(
+                        nombreDeNivel(nivel),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colorNivel,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
 
                 Row(
                     modifier = Modifier
@@ -494,11 +530,11 @@ private fun FilaParpadeos(cantidad: Int, ultimo: Parpadeo?) {
             Text(
                 when {
                     ultimo == null -> "-"
-                    ultimo.lento -> "${ultimo.duracionMs} ms · lento"
+                    ultimo.lento -> "${ultimo.duracionMs} ms · microsueño"
                     else -> "${ultimo.duracionMs} ms"
                 },
                 style = DatoMono,
-                color = if (ultimo?.lento == true) colorDeNivel(1) else MaterialTheme.colorScheme.onSurface,
+                color = if (ultimo?.lento == true) colorDeNivel(2) else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
@@ -545,7 +581,7 @@ private fun FilaCabeceos(eventos: List<Evento>) {
                 if (ultimo == null) "-"
                 else "${ultimo.valorTexto ?: "-"} · ${ultimo.hora}",
                 style = DatoMono,
-                color = if (ultimo != null) colorDeNivel(2) else MaterialTheme.colorScheme.onSurface,
+                color = if (ultimo != null) colorDeNivel(3) else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
@@ -671,6 +707,39 @@ private fun AvisoHistorial() {
 }
 
 /** Aviso de "hay señal pero falta la contraseña para subir". */
+@Composable
+private fun AvisoCalibrar(onCalibrar: () -> Unit) {
+    val forma = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer, forma)
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), forma)
+            .padding(horizontal = 14.dp, vertical = 14.dp)
+    ) {
+        Text(
+            "Calibrá la vincha",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Text(
+            "Antes de tu primer viaje tenés que hacer la calibración inicial. " +
+                    "Dura 1 minuto y se hace una sola vez.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Button(
+            onClick = onCalibrar,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+        ) {
+            Text("Calibrar")
+        }
+    }
+}
+
 @Composable
 private fun AvisoClave(onIngresarClave: () -> Unit) {
     val forma = RoundedCornerShape(12.dp)

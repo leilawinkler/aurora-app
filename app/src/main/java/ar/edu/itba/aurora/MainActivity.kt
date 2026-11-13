@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class Pantalla {
     data object Cargando : Pantalla()
@@ -32,6 +33,14 @@ sealed class Pantalla {
     // obligatorio = true cuando entro con una contraseña temporal
     data class CambiarPassword(val obligatorio: Boolean = false) : Pantalla()
     data object Recuperar : Pantalla()
+    // Calibracion: DURACION (inicial / Recalibrar) o AMPLITUD (antes del viaje,
+    // con el origen y destino que se cargaron en Nuevo viaje)
+    data class Calibrar(
+        val tipo: TipoCalibracion,
+        val origen: String = "",
+        val destino: String = "",
+        val volverAConfiguracion: Boolean = false
+    ) : Pantalla()
 }
 
 /**
@@ -106,6 +115,20 @@ fun AppAurora() {
     var enviandoClave by remember { mutableStateOf(false) }
     var errorClave by remember { mutableStateOf<String?>(null) }
 
+    // --- Calibracion de duracion basal (ver Calibracion.kt) ---
+    // Sin basal no se puede empezar un viaje. Mientras se pregunta a la nube
+    // (revisandoBasal) no se muestra el aviso, para que no aparezca y
+    // desaparezca enseguida.
+    val cambiosBasal by Calibracion.cambios.collectAsState()
+    val basal = remember(perfil?.id, cambiosBasal) { Calibracion.basal(perfil?.id) }
+    var revisandoBasal by remember { mutableStateOf(true) }
+    LaunchedEffect(perfil?.id) {
+        val p = perfil ?: return@LaunchedEffect
+        revisandoBasal = true
+        withTimeoutOrNull(6_000) { Calibracion.traerDeLaNube(p.id) }
+        revisandoBasal = false
+    }
+
     // El viaje abierto y los ya cerrados salen de la misma lista.
     val viajeEnCurso = viajes.firstOrNull { it.enCurso }
     val viajesAnteriores = viajes.filter { !it.enCurso }
@@ -117,31 +140,52 @@ fun AppAurora() {
     val hayInternet by Sincronizador.hayInternet.collectAsState()
     var parpadeosViaje by remember { mutableStateOf(0) }
     var ultimoParpadeo by remember { mutableStateOf<Parpadeo?>(null) }
+    var estadoNivel by remember { mutableStateOf(EstadoNivel()) }
 
-    // Mientras hay un viaje en curso, escucha a la vincha.
-    //  - Parpadeos: todos se cuentan en pantalla; los LENTOS se guardan como
-    //    evento "parpadeo_lento" (nivel 1, valor = duracion en ms).
-    //  - Cabeceos: todos se guardan como evento "cabeceo" (nivel 2,
-    //    valor = grados hacia adelante).
+    // Mientras hay un viaje en curso, escucha a la vincha. Los tres niveles:
+    //  - Nivel 1: alerta de somnolencia ("A") -> evento "somnolencia"
+    //    (valor = promedio de duracion del parpadeo, ms).
+    //  - Nivel 2: microsueño (parpadeo "L") -> evento "microsueno"
+    //    (valor = duracion, ms). Los parpadeos normales solo se cuentan en pantalla.
+    //  - Nivel 3: cabeceo ("C") -> evento "cabeceo" (valor = grados).
     // Cada evento va primero al telefono (Room) y el sincronizador lo sube a
     // la web cuando hay señal.
     val idViajeEnCurso = viajeEnCurso?.id
     LaunchedEffect(perfil?.id, idViajeEnCurso) {
         parpadeosViaje = 0
         ultimoParpadeo = null
+        estadoNivel = EstadoNivel()
         val p = perfil ?: return@LaunchedEffect
         val idViaje = idViajeEnCurso ?: return@LaunchedEffect
         coroutineScope {
+            launch {
+                Vincha.alertasNivel1.collect { alerta ->
+                    estadoNivel = estadoNivel.copy(nivel1DesdeMs = alerta.recibidoEnMs)
+                    Almacen.registrarEvento(
+                        perfil = p,
+                        idViaje = idViaje,
+                        tipo = "somnolencia",
+                        nivel = 1,
+                        valor = alerta.promedioMs.toDouble(),
+                        ocurridoEnMs = alerta.recibidoEnMs
+                    )
+                    Sincronizador.huboNovedades()
+                }
+            }
+            launch {
+                Vincha.finesNivel1.collect { estadoNivel = estadoNivel.copy(nivel1DesdeMs = null) }
+            }
             launch {
                 Vincha.parpadeos.collect { parpadeo ->
                     parpadeosViaje++
                     ultimoParpadeo = parpadeo
                     if (parpadeo.lento) {
+                        estadoNivel = estadoNivel.copy(ultimoNivel2Ms = parpadeo.recibidoEnMs)
                         Almacen.registrarEvento(
                             perfil = p,
                             idViaje = idViaje,
-                            tipo = "parpadeo_lento",
-                            nivel = 1,
+                            tipo = "microsueno",
+                            nivel = 2,
                             valor = parpadeo.duracionMs.toDouble(),
                             ocurridoEnMs = parpadeo.recibidoEnMs
                         )
@@ -151,11 +195,12 @@ fun AppAurora() {
             }
             launch {
                 Vincha.cabeceos.collect { cabeceo ->
+                    estadoNivel = estadoNivel.copy(ultimoNivel3Ms = cabeceo.recibidoEnMs)
                     Almacen.registrarEvento(
                         perfil = p,
                         idViaje = idViaje,
                         tipo = "cabeceo",
-                        nivel = 2,
+                        nivel = 3,
                         valor = cabeceo.grados.toDouble(),
                         ocurridoEnMs = cabeceo.recibidoEnMs
                     )
@@ -353,6 +398,9 @@ fun AppAurora() {
                     errorNuevoViaje = null
                     pantalla = Pantalla.NuevoViaje
                 },
+                faltaCalibrar = basal == null && !revisandoBasal,
+                puedeIniciar = basal != null,
+                onCalibrar = { pantalla = Pantalla.Calibrar(TipoCalibracion.DURACION) },
                 onAbrirViaje = { pantalla = Pantalla.Detalle(it) },
                 onIrAConfiguracion = { pantalla = Pantalla.Configuracion },
                 nombreChofer = perfil?.nombreCompleto ?: "",
@@ -373,10 +421,13 @@ fun AppAurora() {
                 finalizando = finalizando,
                 parpadeosViaje = parpadeosViaje,
                 ultimoParpadeo = ultimoParpadeo,
+                estadoNivel = estadoNivel,
                 vinchaConectada = vinchaConectada,
                 onFinalizarViaje = {
                     val abierto = viajeEnCurso ?: return@PantallaViajes
                     finalizando = true
+                    // La vincha deja de detectar y de alertar
+                    Vincha.enviar("X")
                     alcance.launch {
                         Almacen.finalizarViaje(abierto.id)
                             .onFailure { errorViajes = mensajeDeError(it) }
@@ -414,36 +465,69 @@ fun AppAurora() {
                 guardando = guardandoViaje,
                 error = errorNuevoViaje,
                 onIniciar = { origen, destino ->
-                    val p = perfil
-                    if (p == null) {
+                    if (perfil == null) {
                         errorNuevoViaje = "No se pudo identificar al chofer. Cerrá y abrí la app."
-                        return@PantallaNuevoViaje
+                    } else if (basal == null) {
+                        errorNuevoViaje = "Antes de tu primer viaje tenés que hacer la calibración inicial."
+                    } else {
+                        errorNuevoViaje = null
+                        // Primero se calibra; el viaje se crea recien cuando
+                        // la vincha confirma (asi un viaje cancelado no queda).
+                        pantalla = Pantalla.Calibrar(TipoCalibracion.AMPLITUD, origen, destino)
                     }
-                    guardandoViaje = true
-                    errorNuevoViaje = null
-                    alcance.launch {
-                        // Solo escribe en el telefono: no necesita señal.
-                        try {
-                            Almacen.iniciarViaje(p, origen, destino)
-                                .onSuccess {
-                                    pantalla = Pantalla.Viajes
-                                    // Si hay señal, el viaje aparece enseguida en
-                                    // la web del admin; si no, queda pendiente.
-                                    Sincronizador.huboNovedades()
-                                }
-                                .onFailure { errorNuevoViaje = mensajeDeError(it) }
-                        } finally {
-                            // Pase lo que pase, el boton vuelve a estar disponible.
-                            guardandoViaje = false
+                }
+            )
+        }
+
+        is Pantalla.Calibrar -> AuroraTheme(oscuro = temaOscuro) {
+            val volver: Pantalla =
+                if (actual.volverAConfiguracion) Pantalla.Configuracion else Pantalla.Viajes
+            PantallaCalibracion(
+                tipo = actual.tipo,
+                basalMs = basal?.ms,
+                onDuracionOk = { ms, parpadeos ->
+                    perfil?.let { Calibracion.guardarNueva(it.id, ms, parpadeos) }
+                },
+                onAmplitudOk = { _, _ ->
+                    // Termino toda la calibracion y la vincha ya vibro: ahora
+                    // si se crea el viaje y arranca el tiempo.
+                    val p = perfil
+                    if (p != null && !guardandoViaje) {
+                        guardandoViaje = true
+                        alcance.launch {
+                            try {
+                                // Solo escribe en el telefono: no necesita señal.
+                                Almacen.iniciarViaje(p, actual.origen, actual.destino)
+                                    .onSuccess {
+                                        pantalla = Pantalla.Viajes
+                                        // Si hay señal, el viaje aparece enseguida en
+                                        // la web del admin; si no, queda pendiente.
+                                        Sincronizador.huboNovedades()
+                                    }
+                                    .onFailure {
+                                        // Sin viaje no tiene sentido que la vincha detecte
+                                        Vincha.enviar("X")
+                                        errorNuevoViaje = mensajeDeError(it)
+                                        pantalla = Pantalla.NuevoViaje
+                                    }
+                            } finally {
+                                guardandoViaje = false
+                            }
                         }
                     }
+                },
+                onSalir = {
+                    if (actual.tipo == TipoCalibracion.AMPLITUD) Vincha.enviar("X")
+                    pantalla = volver
                 }
             )
         }
 
         is Pantalla.Detalle -> AuroraTheme(oscuro = temaOscuro) {
             PantallaDetalle(
-                viaje = actual.viaje,
+                // La version actual del viaje (la lista se recarga con cada evento
+                // nuevo): asi el detalle de un viaje en curso se actualiza solo.
+                viaje = viajes.firstOrNull { it.id == actual.viaje.id } ?: actual.viaje,
                 onVolver = { pantalla = Pantalla.Viajes }
             )
         }
@@ -462,6 +546,11 @@ fun AppAurora() {
                     errorPassword = null
                     passwordCambiada = false
                     pantalla = Pantalla.CambiarPassword()
+                },
+                basal = basal,
+                enViaje = viajeEnCurso != null,
+                onRecalibrar = {
+                    pantalla = Pantalla.Calibrar(TipoCalibracion.DURACION, volverAConfiguracion = true)
                 },
                 onCerrarSesion = cerrarSesion
             )

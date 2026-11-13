@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 // ============================================================================
 // Paleta AURORA — la misma de la web (style.css, bloque :root)
 // ============================================================================
-// Sale del logo (rosa y crema), del cielo nocturno del login y de los dos
+// Sale del logo (rosa y crema), del cielo nocturno del login y de los tres
 // niveles de alerta que mide el dispositivo.
 
 // --- Marca ---
@@ -33,9 +33,12 @@ val VioletaAurora = Color(0xFF7C5CFF)    // banda violeta del login
 val AmbarAurora = Color(0xFFF9A00F)      // banda ambar del login
 
 // --- Estados del aparato ---
-val Nivel1 = Color(0xFFE0983A)           // --warning-color: precaucion
-val Nivel2 = Color(0xFFD9435F)           // --danger-color, un poco mas vivo para que se lea de noche
-val Nivel3 = Nivel2                      // no se usa: el aparato solo manda nivel 1 y 2
+val Nivel1 = Color(0xFFE0983A)           // --warning-color: nivel 1, somnolencia
+val Nivel2 = Color(0xFFE0692F)           // --level2-color: nivel 2, microsueño (un poco mas vivo para la noche)
+val Nivel3 = Color(0xFFD9435F)           // --danger-color: nivel 3, cabeceo (un poco mas vivo para la noche)
+// Rojo para resaltar problemas en pantalla (vincha desconectada, errores):
+// el mismo del nivel 3, pero con nombre propio para no mezclar los usos.
+val Peligro = Nivel3
 val VerdeOk = Color(0xFF2E7D6B)          // --normal-color: sereno
 
 // --- Modo dia: papel calido, tarjetas blancas, hilos finos ---
@@ -133,7 +136,11 @@ val MarcaChica = TextStyle(
 
 // ---------- Utilidad ----------
 
-fun colorDeNivel(nivel: Int): Color = if (nivel >= 2) Nivel2 else Nivel1
+fun colorDeNivel(nivel: Int): Color = when {
+    nivel >= 3 -> Nivel3
+    nivel == 2 -> Nivel2
+    else -> Nivel1
+}
 
 /**
  * El "rastro de aurora" que la web pone debajo del header: tres manchas de

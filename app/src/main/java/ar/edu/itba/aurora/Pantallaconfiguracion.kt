@@ -42,7 +42,10 @@ fun PantallaConfiguracion(
     empresa: String = "",
     onCambiarPassword: () -> Unit = {},
     estadoSync: EstadoSync = EstadoSync.SINCRONIZADO,
-    pendientes: Int = 0
+    pendientes: Int = 0,
+    basal: BasalGuardado? = null,
+    enViaje: Boolean = false,
+    onRecalibrar: () -> Unit = {}
 ) {
     Scaffold(
         modifier = Modifier
@@ -104,20 +107,42 @@ fun PantallaConfiguracion(
                 ControlVincha()
             }
 
-            // Calibración
-            Seccion("calibración") {
+            // Calibración de duración basal (la de amplitud se hace en cada viaje)
+            Seccion("calibración") {
+                if (basal != null) {
+                    FilaDato("Parpadeo de referencia", "${basal.ms} ms")
+                    if (basal.calibradoEnMs > 0) FilaDato("Calibrada", fechaYHora(basal.calibradoEnMs))
+                    if (basal.pendiente) {
+                        Text(
+                            "Todavía no se subió: se sube sola cuando haya señal.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        "Todavía no hiciste la calibración inicial. Es necesaria para iniciar viajes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Peligro
+                    )
+                }
                 Text(
-                    "Última línea de base: 05 sep, 08:12. Recalibrá si cambiaste la posición de la vincha.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (enViaje) "No se puede recalibrar durante un viaje."
+                    else "Recalibrá si te parece que la vincha no detecta bien cómo parpadeás. " +
+                            "Hacelo descansado y bien despierto.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp)
                 )
                 OutlinedButton(
-                    onClick = {},
+                    onClick = onRecalibrar,
+                    enabled = !enViaje,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 14.dp)
                 ) {
-                    Text("Recalibrar")
+                    Text(if (basal == null) "Calibrar" else "Recalibrar")
                 }
             }
 
@@ -217,7 +242,13 @@ private fun FilaDato(etiqueta: String, valor: String, resaltado: Boolean = false
         Text(
             valor,
             style = DatoMono,
-            color = if (resaltado) Nivel2 else MaterialTheme.colorScheme.onSurface
+            color = if (resaltado) Peligro else MaterialTheme.colorScheme.onSurface
         )
     }
 }
+
+/** "12 nov, 10:30" */
+private fun fechaYHora(ms: Long): String =
+    java.time.Instant.ofEpochMilli(ms)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("dd MMM, HH:mm", java.util.Locale("es")))

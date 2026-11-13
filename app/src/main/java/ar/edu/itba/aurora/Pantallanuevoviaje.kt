@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,18 +79,25 @@ fun PantallaNuevoViaje(
             CampoConEtiqueta("destino", destino, "Tucuman") { destino = it }
             CampoConEtiqueta("unidad", unidad, "AB 123 CD") { unidad = it }
 
-            // Estado del dispositivo
+            // Estado real de la vincha: sin ella conectada no se puede calibrar
+            val estadoVincha by Vincha.estado.collectAsState()
+            val conectada = estadoVincha == EstadoVincha.CONECTADA
             Row(modifier = Modifier.padding(top = 12.dp, bottom = 26.dp)) {
                 Box(
                     modifier = Modifier
                         .width(3.dp)
                         .height(48.dp)
-                        .background(VerdeOk)
+                        .background(if (conectada) VerdeOk else Peligro)
                 )
                 Column(modifier = Modifier.padding(start = 12.dp)) {
-                    Text("AURORA-01", style = DatoMono, color = MaterialTheme.colorScheme.onSurface)
+                    Text(Vincha.NOMBRE, style = DatoMono, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        "Conectado - bateria 78 %",
+                        when (estadoVincha) {
+                            EstadoVincha.CONECTADA -> "Conectada"
+                            EstadoVincha.CONECTANDO -> "Conectando..."
+                            EstadoVincha.BUSCANDO -> "Buscando..."
+                            EstadoVincha.DESCONECTADA -> "Desconectada: conectala para calibrar"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 3.dp)
@@ -111,11 +119,11 @@ fun PantallaNuevoViaje(
                 enabled = !guardando && origen.isNotBlank() && destino.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (guardando) "Iniciando..." else "Iniciar viaje")
+                Text(if (guardando) "Iniciando..." else "Siguiente: calibrar")
             }
 
             Text(
-                "Durante los primeros 5 minutos del viaje, el dispositivo calibra tu línea de base.",
+                "Antes de arrancar, la vincha se calibra (hasta 30 segundos). Cuando vibra, el viaje empieza solo.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 18.dp, bottom = 32.dp)

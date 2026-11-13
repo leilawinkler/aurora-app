@@ -174,6 +174,12 @@ object Sincronizador {
         val resultado = Almacen.sincronizar()
         _pendientes.value = runCatching { Almacen.pendientes() }.getOrDefault(0)
 
+        // La calibracion de duracion va aparte: si falla (por ejemplo, si
+        // todavia no se corrio supabase_calibracion.sql), no traba los viajes.
+        runCatching { Calibracion.subirPendiente() }
+            .onFailure { android.util.Log.e("AuroraSync", "No se pudo subir la calibracion", it) }
+        Preferencias.perfilGuardado?.id?.let { Calibracion.traerDeLaNube(it) }
+
         // Recien subido un viaje nuevo: que la web vea el estado enseguida.
         if (resultado.isSuccess) latidoAhora()
 
@@ -187,7 +193,10 @@ object Sincronizador {
             _estado.value = EstadoSync.SINCRONIZADO
         } else {
             android.util.Log.e("AuroraSync", "Fallo la sincronizacion", error)
-            _ultimoError.value = error.message ?: error.toString()
+            // Solo la primera parte del mensaje: el resto trae la URL y los
+            // encabezados de la consulta (con el token de la sesion).
+            _ultimoError.value = (error.message ?: error.toString())
+                .substringBefore("URL:").substringBefore("Headers:").trim()
             // Solo se dice "sin conexion" si de verdad fue un error de red.
             _estado.value =
                 if (esErrorDeRed(error)) EstadoSync.SIN_CONEXION else EstadoSync.ERROR

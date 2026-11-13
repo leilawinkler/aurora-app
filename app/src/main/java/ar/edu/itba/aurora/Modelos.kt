@@ -95,3 +95,39 @@ object DatosDeEjemplo {
         )
     )
 }
+
+/**
+ * En que nivel esta el conductor ahora (se muestra en la tarjeta del viaje en curso).
+ * Se guarda cuando paso cada cosa; el nivel que se muestra es el MAS RECIENTE de
+ * los que siguen vigentes:
+ *  - nivel 1: desde la alerta "A" hasta que la vincha avisa que termino ("AF")
+ *  - nivel 2 (microsueño) y nivel 3 (cabeceo): durante 20 s despues del evento
+ *    (la misma ventana que usa el firmware para decidir si un microsueño esta aislado)
+ * Si no hay ninguno vigente: normal (0).
+ */
+data class EstadoNivel(
+    val nivel1DesdeMs: Long? = null,     // null = el nivel 1 no esta activo
+    val ultimoNivel2Ms: Long? = null,
+    val ultimoNivel3Ms: Long? = null
+) {
+    fun nivelEn(ahoraMs: Long): Int {
+        val vigentes = buildList {
+            nivel1DesdeMs?.let { add(1 to it) }
+            ultimoNivel2Ms?.takeIf { ahoraMs - it <= VIGENCIA_MS }?.let { add(2 to it) }
+            ultimoNivel3Ms?.takeIf { ahoraMs - it <= VIGENCIA_MS }?.let { add(3 to it) }
+        }
+        return vigentes.maxByOrNull { it.second }?.first ?: 0
+    }
+
+    companion object {
+        const val VIGENCIA_MS = 20_000L
+    }
+}
+
+/** "Normal", "Nivel 1 · somnolencia", ... */
+fun nombreDeNivel(nivel: Int): String = when (nivel) {
+    1 -> "Nivel 1 · somnolencia"
+    2 -> "Nivel 2 · microsueño"
+    3 -> "Nivel 3 · cabeceo"
+    else -> "Normal"
+}
