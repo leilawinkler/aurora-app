@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
@@ -823,6 +824,47 @@ fun DialogoClave(
         },
         dismissButton = {
             TextButton(onClick = onCancelar, enabled = !enviando) { Text("Más tarde") }
+        }
+    )
+}
+
+/**
+ * Aviso de que el administrador pidio una recalibracion (desde la web).
+ * "Recalibrar" lleva a la calibracion de duracion de siempre; la cruz lo
+ * ignora por ahora (vuelve a aparecer la proxima vez que se abra la app,
+ * hasta que recalibre). Nunca impide empezar un viaje.
+ */
+@Composable
+fun DialogoRecalibrar(
+    onRecalibrar: () -> Unit,
+    onIgnorar: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onIgnorar,
+        title = {
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    "Debes recalibrar tu dispositivo.",
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(top = 8.dp)
+                )
+                IconButton(onClick = onIgnorar) {
+                    Icon(Icons.Filled.Close, contentDescription = "Ignorar")
+                }
+            }
+        },
+        text = {
+            Text(
+                "Tu administrador pidió que vuelvas a calibrar la vincha. " +
+                        "Hacelo descansado y bien despierto.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            Button(onClick = onRecalibrar, modifier = Modifier.fillMaxWidth()) {
+                Text("Recalibrar")
+            }
         }
     )
 }

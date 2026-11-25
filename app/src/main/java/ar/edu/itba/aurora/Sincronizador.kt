@@ -122,17 +122,35 @@ object Sincronizador {
         }
     }
 
-    /** Dispara una sincronizacion. Si ya hay una corriendo, no hace nada. */
+    // Se prende si piden sincronizar mientras ya hay una corriendo.
+    private val otraVuelta = AtomicBoolean(false)
+
+    /**
+     * Dispara una sincronizacion. Si ya hay una corriendo, no se pierde el
+     * pedido: se anota y, cuando termina la actual, se hace otra vuelta.
+     *
+     * Antes el pedido se descartaba. Si el chofer empezaba un viaje justo
+     * mientras se sincronizaba otra cosa (por ejemplo, la calibracion), el
+     * viaje nuevo quedaba esperando la vuelta de cada minuto y la web tardaba
+     * hasta un minuto en verlo.
+     */
     fun sincronizar() {
+        otraVuelta.set(true)
         alcance.launch {
             // compareAndSet: marca "trabajando" y verifica que no lo estuviera,
             // en un solo paso, para que no arranquen dos a la vez.
             if (!trabajando.compareAndSet(false, true)) return@launch
             try {
-                sincronizarAhora()
+                // Mientras haya pedidos anotados, se sigue sincronizando.
+                while (otraVuelta.getAndSet(false)) {
+                    sincronizarAhora()
+                }
             } finally {
                 trabajando.set(false)
             }
+            // Por si llego un pedido justo entre el ultimo chequeo y soltar
+            // "trabajando": se vuelve a disparar.
+            if (otraVuelta.get()) sincronizar()
         }
     }
 

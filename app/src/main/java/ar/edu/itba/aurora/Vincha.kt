@@ -71,6 +71,8 @@ sealed class MensajeCalibracion {
     data class AmplitudOk(val umbralMv: Int, val polaridad: Int, val parpadeos: Int) : MensajeCalibracion()
     // codigo: POL (vincha al reves) | SINP (sin parpadeos) | ERR (otro) | CANC (cancelada)
     data class Error(val duracion: Boolean, val codigo: String) : MensajeCalibracion()
+    // Respuesta a "S": enViaje = la vincha esta detectando (la calibracion del viaje salio bien)
+    data class Estado(val enViaje: Boolean, val umbralMv: Int, val basalMs: Int) : MensajeCalibracion()
 }
 
 /**
@@ -530,6 +532,14 @@ object Vincha {
             val segundos = partes.getOrNull(1)?.toIntOrNull() ?: return null
             return MensajeCalibracion.Progreso(segundos, partes.getOrNull(2)?.toIntOrNull() ?: 0)
         }
+        if (tipo == "S") {
+            val modo = partes.getOrNull(1)?.toIntOrNull() ?: return null
+            return MensajeCalibracion.Estado(
+                modo == 1,
+                partes.getOrNull(2)?.toIntOrNull() ?: 0,
+                partes.getOrNull(3)?.toIntOrNull() ?: 0
+            )
+        }
         if (tipo != "KD" && tipo != "KA") return null
         val duracion = tipo == "KD"
         return when (partes.getOrNull(1)) {
@@ -573,7 +583,7 @@ object Vincha {
                 ultimaAlerta = a.numero
                 _alertasNivel1.tryEmit(a)
             }
-            "KD", "KA", "KP" -> interpretarCalibracion(partes)?.let { _calibracion.tryEmit(it) }
+            "KD", "KA", "KP", "S" -> interpretarCalibracion(partes)?.let { _calibracion.tryEmit(it) }
         }
     }
 }

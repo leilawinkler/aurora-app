@@ -45,15 +45,25 @@ enum class TipoCalibracion { DURACION, AMPLITUD }
 
 private sealed class EstadoCal {
     data object Instrucciones : EstadoCal()
-    data class Midiendo(val inicioMs: Long, val segundos: Int = 0, val parpadeos: Int = 0) : EstadoCal()
+    // recibio = llego al menos un mensaje de progreso (la vincha esta calibrando)
+    // pregunto = ya se le pidio el estado ("S") porque el resultado no llegaba
+    data class Midiendo(
+        val inicioMs: Long,
+        val segundos: Int = 0,
+        val parpadeos: Int = 0,
+        val recibio: Boolean = false,
+        val pregunto: Boolean = false
+    ) : EstadoCal()
     data class Lista(val basalMs: Int) : EstadoCal()          // solo DURACION
     data class Fallo(val titulo: String, val detalle: String) : EstadoCal()
 }
 
-// Lo que tarda la vincha como mucho (firmware v18.1) y el margen antes de
-// decir "no responde": la de amplitud suma 2 s de base y postura al final.
+// Lo que tarda la vincha como mucho (firmware v18.1): la de amplitud suma
+// 2 s de base y postura al final. Si a los PREGUNTAR_S de margen no llego el
+// resultado, se le pregunta el estado; a los MARGEN_S se da por fallida.
 private const val DURACION_S = 60
 private const val AMPLITUD_MAX_S = 30
+private const val PREGUNTAR_S = 8
 private const val MARGEN_S = 20
 
 /** El mensaje para el conductor segun el codigo de error de la vincha. */
@@ -92,7 +102,13 @@ fun PantallaCalibracion(
             if (actual !is EstadoCal.Midiendo) return@collect
             when (m) {
                 is MensajeCalibracion.Progreso ->
-                    estado = actual.copy(segundos = m.segundos, parpadeos = m.parpadeos)
+                    estado = actual.copy(segundos = m.segundos, parpadeos = m.parpadeos, recibio = true)
+                // Respuesta a "S" (el resultado no llegaba). Para la del viaje alcanza:
+                // si la vincha esta en viaje, la calibracion salio bien.
+                is MensajeCalibracion.Estado -> if (!esDuracion && actual.pregunto) {
+                    if (m.enViaje) onAmplitudOk(m.umbralMv, actual.parpadeos)
+                    else estado = falloPara("ERR")
+                }
                 is MensajeCalibracion.DuracionOk -> if (esDuracion) {
                     onDuracionOk(m.basalMs, m.parpadeos)
                     estado = EstadoCal.Lista(m.basalMs)
@@ -113,9 +129,16 @@ fun PantallaCalibracion(
         val inicio = midiendo?.inicioMs ?: return@LaunchedEffect
         while (true) {
             ahoraMs = System.currentTimeMillis()
+            val actual = estado as? EstadoCal.Midiendo ?: break
+            // El resultado no llego a tiempo: se le pregunta a la vincha en que esta
+            if (!actual.pregunto && ahoraMs - inicio > (maxS + PREGUNTAR_S) * 1000L) {
+                estado = actual.copy(pregunto = true)
+                Vincha.enviar("S")
+            }
             if (ahoraMs - inicio > (maxS + MARGEN_S) * 1000L) {
                 Vincha.enviar("X")
-                estado = EstadoCal.Fallo(
+                // Si mando progreso, la vincha si estaba calibrando: lo que no llego fue el final
+                estado = if (actual.recibio) falloPara("ERR") else EstadoCal.Fallo(
                     "La vincha no respondió",
                     "Fijate que esté prendida y cerca del teléfono, y reintentá."
                 )

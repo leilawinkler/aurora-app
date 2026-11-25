@@ -122,12 +122,28 @@ fun AppAurora() {
     val cambiosBasal by Calibracion.cambios.collectAsState()
     val basal = remember(perfil?.id, cambiosBasal) { Calibracion.basal(perfil?.id) }
     var revisandoBasal by remember { mutableStateOf(true) }
+
+    // --- Recalibracion pedida por el admin (desde la web) ---
+    // Si el admin la pidio despues de la ultima calibracion, al entrar se
+    // muestra un aviso. La cruz lo oculta hasta la proxima vez que se abra
+    // la app. Al recalibrar, la calibracion pasa a ser mas nueva que el
+    // pedido y el aviso deja de aparecer solo.
+    var recalPedidaMs by remember { mutableStateOf<Long?>(null) }
+    var avisoRecalIgnorado by remember { mutableStateOf(false) }
+
     LaunchedEffect(perfil?.id) {
         val p = perfil ?: return@LaunchedEffect
         revisandoBasal = true
+        avisoRecalIgnorado = false
         withTimeoutOrNull(6_000) { Calibracion.traerDeLaNube(p.id) }
         revisandoBasal = false
+        recalPedidaMs = withTimeoutOrNull(6_000) {
+            runCatching { Datos.recalibracionPedida(p.id) }
+                .onFailure { android.util.Log.w("AuroraCal", "No se pudo leer el pedido de recalibracion", it) }
+                .getOrNull()
+        }
     }
+    val debeRecalibrar = basal != null && recalPedidaMs?.let { basal.calibradoEnMs < it } == true
 
     // El viaje abierto y los ya cerrados salen de la misma lista.
     val viajeEnCurso = viajes.firstOrNull { it.enCurso }
@@ -437,6 +453,13 @@ fun AppAurora() {
                     }
                 }
             )
+            // Durante un viaje no se puede recalibrar: el aviso espera a que termine.
+            if (debeRecalibrar && !avisoRecalIgnorado && viajeEnCurso == null && !mostrarDialogoClave) {
+                DialogoRecalibrar(
+                    onRecalibrar = { pantalla = Pantalla.Calibrar(TipoCalibracion.DURACION) },
+                    onIgnorar = { avisoRecalIgnorado = true }
+                )
+            }
             if (mostrarDialogoClave) {
                 DialogoClave(
                     enviando = enviandoClave,

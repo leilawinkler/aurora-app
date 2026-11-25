@@ -54,6 +54,12 @@ private data class BasalFila(
     @SerialName("basal_calibrado_en") val calibradoEn: String? = null
 )
 
+/** Pedido de recalibracion del admin (supabase_recalibracion.sql, en el repo de la web). */
+@Serializable
+private data class RecalFila(
+    @SerialName("recalibracion_pedida_en") val pedidaEn: String? = null
+)
+
 /** La duracion basal que esta en la nube. ms = null: el chofer nunca calibro. */
 data class BasalNube(val ms: Int?, val calibradoEnMs: Long?)
 
@@ -151,6 +157,19 @@ object Datos {
             }
             .decodeSingleOrNull<BasalFila>()
             ?.let { BasalNube(it.durBasalMs, aMilisegundos(it.calibradoEn)) }
+
+    /**
+     * Momento en que el admin le pidio al chofer que recalibre (desde la web),
+     * o null si nunca se lo pidio. Consulta aparte, igual que el basal: si la
+     * columna todavia no existe en la base, falla solo esto.
+     */
+    suspend fun recalibracionPedida(idChofer: String): Long? =
+        supabase.from("usuarios")
+            .select(Columns.list("recalibracion_pedida_en")) {
+                filter { eq("id", idChofer) }
+            }
+            .decodeSingleOrNull<RecalFila>()
+            ?.let { aMilisegundos(it.pedidaEn) }
 
     /**
      * Sube una calibracion de duracion. Usa la funcion guardar_basal del
